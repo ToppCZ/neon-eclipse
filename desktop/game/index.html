@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Neon Eclipse</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="vignette"></div>
+
+  <!-- ===== HUD (during a run) ===== -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <div id="hp-wrap" class="bar-wrap">
+        <div id="hp-bar" class="bar-fill hp"></div>
+        <span id="hp-label" class="bar-label">100 / 100</span>
+      </div>
+      <div id="timer">0:00</div>
+      <div id="gold-counter"><span class="coin">●</span><span id="gold-val">0</span></div>
+    </div>
+    <div id="xp-wrap" class="bar-wrap thin">
+      <div id="xp-bar" class="bar-fill xp"></div>
+    </div>
+    <div id="level-badge">Lv 1</div>
+    <div id="weapon-tray"></div>
+  </div>
+
+  <div id="boss-banner" class="hidden"></div>
+  <div id="kill-counter" class="hidden"></div>
+
+  <!-- ===== Main Menu ===== -->
+  <div id="screen-menu" class="screen">
+    <div class="menu-card">
+      <h1 class="title">NEON <span>ECLIPSE</span></h1>
+      <p class="subtitle">Survive the swarm. Outgrow the dark.</p>
+      <div class="menu-buttons">
+        <button id="btn-play" class="btn btn-primary">Start Run</button>
+        <button id="btn-shop" class="btn">Upgrades</button>
+      </div>
+      <div class="menu-stats" id="menu-stats"></div>
+      <p class="controls-hint">Move: WASD / Arrow Keys &nbsp;·&nbsp; Weapons fire automatically &nbsp;·&nbsp; Esc to pause</p>
+    </div>
+  </div>
+
+  <!-- ===== Character Select ===== -->
+  <div id="screen-characters" class="screen hidden">
+    <div class="menu-card wide">
+      <h2>Choose your survivor</h2>
+      <div id="character-list" class="character-list"></div>
+      <button id="btn-back-chars" class="btn btn-ghost">Back</button>
+    </div>
+  </div>
+
+  <!-- ===== Meta Shop ===== -->
+  <div id="screen-shop" class="screen hidden">
+    <div class="menu-card wide">
+      <h2>Upgrades <span class="gold-title"><span class="coin">●</span><span id="shop-gold">0</span></span></h2>
+      <div id="shop-list" class="shop-list"></div>
+      <button id="btn-back-shop" class="btn btn-ghost">Back</button>
+    </div>
+  </div>
+
+  <!-- ===== Level-up modal ===== -->
+  <div id="screen-levelup" class="screen hidden">
+    <div class="menu-card wide">
+      <h2>Level Up!</h2>
+      <div id="levelup-choices" class="choice-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== Pause ===== -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="menu-card">
+      <h2>Paused</h2>
+      <div class="menu-buttons">
+        <button id="btn-resume" class="btn btn-primary">Resume</button>
+        <button id="btn-quit" class="btn btn-ghost">Quit to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Game Over / Victory ===== -->
+  <div id="screen-end" class="screen hidden">
+    <div class="menu-card">
+      <h2 id="end-title">Run Complete</h2>
+      <div id="end-stats" class="end-stats"></div>
+      <div class="menu-buttons">
+        <button id="btn-retry" class="btn btn-primary">Play Again</button>
+        <button id="btn-end-menu" class="btn btn-ghost">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="mute-btn" title="Toggle sound">🔊</button>
+
+  <script src="bundle.js"></script>
+</body>
+</html>

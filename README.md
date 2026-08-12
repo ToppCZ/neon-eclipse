@@ -1,10 +1,24 @@
 # Neon Eclipse
 
-A bullet-heaven / survivors-like built for the browser — no build step, no dependencies, no external assets. Everything (art, sound, music) is generated at runtime from vanilla HTML5 Canvas and WebAudio.
+A bullet-heaven / survivors-like — no external art or audio assets, everything (visuals, sound, music) is generated at runtime from vanilla HTML5 Canvas and WebAudio. Ships two ways: as a browser page, and as a standalone Windows desktop app.
 
 Move to dodge, your weapons auto-fire, kill swarms, level up, evolve your build, and survive the run.
 
-## Run it
+## Play it — Windows desktop app
+
+Grab the latest build from the [Releases page](https://github.com/ToppCZ/neon-eclipse/releases), unzip it, and run `NeonEclipse.exe`. No browser, no server, no install — it's a real window (WPF + Microsoft Edge WebView2, requires the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — already present on most Windows 10/11 machines).
+
+To build it yourself:
+
+```bash
+python bundle.py desktop/game    # bundle src/*.js into one script (no ES modules = no server needed)
+cd desktop
+dotnet publish -c Release -r win-x64 --self-contained true -o publish_out
+```
+
+Then run `desktop\publish_out\NeonEclipse.exe`. (`dotnet` here is the .NET 8 SDK.) The `desktop/` folder is a normal WPF project — `dotnet run` also works for local testing.
+
+## Play it — browser
 
 You need a static file server (ES modules don't load over `file://`). Any static server works; a zero-dependency one is included:
 
@@ -51,6 +65,8 @@ src/
   meta.js          localStorage meta-progression + shop
   ui.js            DOM screen/HUD management
   utils.js         math, object pooling, spatial grid
+bundle.py        concatenates src/*.js into one script (no ES modules) for the desktop build
+desktop/         WPF + WebView2 wrapper -> NeonEclipse.exe (desktop/game/ is bundle.py's output)
 ```
 
 ## Debugging

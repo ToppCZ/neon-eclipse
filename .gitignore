@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# .NET desktop build output (regenerate with dotnet build / dotnet publish)
+desktop/bin/
+desktop/obj/
+desktop/publish/
+desktop/publish_out/
+desktop/*.zip
