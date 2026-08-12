@@ -27,24 +27,61 @@ const CHARACTERS = {
 export function getCharacter(id) { return CHARACTERS[id] || CHARACTERS.vex; }
 export function listCharacters() { return Object.values(CHARACTERS); }
 
+// Pre-run picks: a real strategic tradeoff before the run even starts, not
+// just a flat buff. Applied once, directly to the character's base stats.
+export const RELICS = {
+  glassCannon: {
+    id: 'glassCannon', name: 'Glass Cannon', glyph: '⚡', color: '#ff5e8a',
+    desc: '+35% damage, -25% max HP',
+    apply(base) { base.baseMight *= 1.35; base.baseMaxHp *= 0.75; },
+  },
+  fortress: {
+    id: 'fortress', name: 'Fortress', glyph: '▣', color: '#ff8a5e',
+    desc: '+30% max HP, +3 armor, -15% move speed',
+    apply(base) { base.baseMaxHp *= 1.3; base.baseArmor += 3; base.baseSpeed *= 0.85; },
+  },
+  berserker: {
+    id: 'berserker', name: 'Berserker', glyph: '⚔', color: '#ffd54a',
+    desc: '+20% attack speed, -10% damage',
+    apply(base) { base.baseCooldown *= 0.8; base.baseMight *= 0.9; },
+  },
+  vampire: {
+    id: 'vampire', name: 'Vampire', glyph: '♥', color: '#7CFC9A',
+    desc: '+1.5 HP/s regen, -20% pickup radius',
+    apply(base) { base.baseRegen += 1.5; base.baseMagnet *= 0.8; },
+  },
+};
+
+export function getRelic(id) { return RELICS[id] || null; }
+export function listRelics() { return Object.values(RELICS); }
+
+const DASH_COOLDOWN = 2.2;
+const DASH_DURATION = 0.18;
+const DASH_SPEED_MULT = 3.4;
+
 export class Player {
-  constructor(character, metaBonuses) {
+  constructor(character, metaBonuses, relic) {
     this.char = character;
+    this.relic = relic || null;
     this.x = 0;
     this.y = 0;
     this.radius = 16;
     this.facing = 0;
 
     const meta = metaBonuses || { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 };
-    this.baseMaxHp = character.baseHp * (1 + meta.hp);
-    this.baseSpeed = character.baseSpeed * (1 + meta.speed);
-    this.baseMight = character.baseMight * (1 + meta.might);
-    this.baseArea = character.baseArea;
-    this.baseCooldown = character.baseCooldown;
-    this.baseMagnet = character.baseMagnet * (1 + meta.magnet);
-    this.baseLuck = character.baseLuck * (1 + meta.luck);
-    this.baseArmor = character.baseArmor + meta.armor;
-    this.baseRegen = character.baseRegen;
+    const base = {
+      baseMaxHp: character.baseHp * (1 + meta.hp),
+      baseSpeed: character.baseSpeed * (1 + meta.speed),
+      baseMight: character.baseMight * (1 + meta.might),
+      baseArea: character.baseArea,
+      baseCooldown: character.baseCooldown,
+      baseMagnet: character.baseMagnet * (1 + meta.magnet),
+      baseLuck: character.baseLuck * (1 + meta.luck),
+      baseArmor: character.baseArmor + meta.armor,
+      baseRegen: character.baseRegen,
+    };
+    if (relic && relic.apply) relic.apply(base);
+    Object.assign(this, base);
 
     this.passives = new Map(); // id -> level
 
@@ -65,7 +102,7 @@ export class Player {
     this.level = 1;
     this.xp = 0;
     this.xpToNext = 5;
-    this.gold = 0;
+    this.cores = 0; // in-run currency, spent at shop nodes; resets each run
 
     this.invulnTimer = 0;
     this.hurtFlash = 0;
@@ -75,6 +112,13 @@ export class Player {
     this.kills = 0;
     this.moveAngle = 0;
     this.moving = false;
+
+    this.auraSlowMult = 1; // set externally each frame by a nearby frost-aura elite, if any
+
+    this.dashCooldownTimer = 0;
+    this.dashTimeLeft = 0;
+    this.dashAngle = 0;
+    this.dashMaxCooldown = DASH_COOLDOWN;
   }
 
   xpCurveFor(level) {
@@ -122,6 +166,7 @@ export class Player {
   update(dt, input, worldHalf) {
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
+    if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
 
     let mx = 0, my = 0;
     if (input.left) mx -= 1;
@@ -129,12 +174,26 @@ export class Player {
     if (input.up) my -= 1;
     if (input.down) my += 1;
     this.moving = mx !== 0 || my !== 0;
-    if (this.moving) {
+    if (this.moving) this.facing = Math.atan2(my, mx);
+
+    if (input.dashPressed && this.dashCooldownTimer <= 0 && this.dashTimeLeft <= 0) {
+      this.dashTimeLeft = DASH_DURATION;
+      this.dashCooldownTimer = DASH_COOLDOWN;
+      this.dashAngle = this.moving ? Math.atan2(my, mx) : this.facing;
+      this.invulnTimer = Math.max(this.invulnTimer, DASH_DURATION + 0.05);
+    }
+
+    if (this.dashTimeLeft > 0) {
+      this.dashTimeLeft -= dt;
+      const dashSpeed = this.speed * DASH_SPEED_MULT;
+      this.x += Math.cos(this.dashAngle) * dashSpeed * dt;
+      this.y += Math.sin(this.dashAngle) * dashSpeed * dt;
+    } else if (this.moving) {
       const len = Math.hypot(mx, my) || 1;
       mx /= len; my /= len;
-      this.x += mx * this.speed * dt;
-      this.y += my * this.speed * dt;
-      this.facing = Math.atan2(my, mx);
+      const effSpeed = this.speed * this.auraSlowMult;
+      this.x += mx * effSpeed * dt;
+      this.y += my * effSpeed * dt;
     }
     this.x = clamp(this.x, -worldHalf, worldHalf);
     this.y = clamp(this.y, -worldHalf, worldHalf);

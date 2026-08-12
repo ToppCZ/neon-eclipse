@@ -1,14 +1,20 @@
 import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, TAU } from './utils.js';
-import { ENEMY_TYPES, BOSS_TYPES, BOSS_SCHEDULE } from './enemyData.js';
+import { ENEMY_TYPES, BOSS_TYPES } from './enemyData.js';
+import { applyBurn, applyPoison, applyShock, applyFrost, updateStatuses, clearStatuses, statusGlowColor } from './statusEffects.js';
 
 function makeEnemy() {
   return {
     x: 0, y: 0, vx: 0, vy: 0, hp: 1, maxHp: 1, speed: 0, damage: 0, radius: 10,
     xp: 1, color: '#fff', glow: '#000', type: null, behavior: 'chase', isBoss: false,
-    hitCooldown: 0, hurtFlash: 0, t: 0, phaseTimer: 0, phase: 0, __alive: true,
-    knockX: 0, knockY: 0,
+    isElite: false, hitCooldown: 0, hurtFlash: 0, t: 0, phaseTimer: 0, phase: 0, __alive: true,
+    knockX: 0, knockY: 0, _statusSpeedMult: 1,
+    burnTime: 0, burnDps: 0, poisonTime: 0, poisonStacks: 0, poisonDpsPerStack: 0,
+    stunTime: 0, frostTime: 0, frostStacks: 0, frostSlowPerStack: 0,
+    affix: null, shieldHp: 0, shieldMaxHp: 0,
   };
 }
+
+export const ELITE_AFFIXES = ['explosive', 'shielded', 'frozenAura'];
 
 function makeEnemyShot() {
   return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, radius: 6, life: 4, color: '#c98cff', __alive: true };
@@ -22,6 +28,7 @@ export class EnemyManager {
       e.type = type;
       e.behavior = type.behavior;
       e.isBoss = !!type.isBoss;
+      e.isElite = false;
       e.x = x; e.y = y; e.vx = 0; e.vy = 0;
       e.maxHp = Math.round(type.hp * hpMult);
       e.hp = e.maxHp;
@@ -37,39 +44,47 @@ export class EnemyManager {
       e.phaseTimer = 0;
       e.phase = 0;
       e.knockX = 0; e.knockY = 0;
+      e._statusSpeedMult = 1;
+      e.affix = null; e.shieldHp = 0; e.shieldMaxHp = 0;
+      clearStatuses(e);
     });
     this.shots = new Pool(makeEnemyShot, (s, x, y, vx, vy, damage, color) => {
       Object.assign(s, { x, y, vx, vy, damage, life: 4, color });
     });
 
     this.spawnTimer = 0;
-    this.bossSpawned = new Set();
     this.activeBoss = null;
+    this.activeElite = null;
     this.onDeath = null; // (enemy) => void
     this.onPlayerHit = null; // (amount, x, y) => void
-    this.onBossSpawned = null; // (name) => void
   }
 
   reset() {
     this.pool.clear();
     this.shots.clear();
     this.spawnTimer = 0;
-    this.bossSpawned.clear();
     this.activeBoss = null;
+    this.activeElite = null;
   }
 
-  difficultyScale(elapsed) {
-    const t = elapsed / 60;
+  // t maxes out around 2-2.5 for a node's short duration; the act multiplier
+  // (much larger swings) is what actually drives the run's difficulty curve.
+  difficultyScale(nodeElapsed, actNumber) {
+    const t = nodeElapsed / 60;
+    const actHp = 1 + (actNumber - 1) * 0.6;
+    const actDmg = 1 + (actNumber - 1) * 0.45;
+    const actSpeed = 1 + (actNumber - 1) * 0.12;
+    const actSpawn = 1 + (actNumber - 1) * 0.3;
     return {
-      hp: 1 + t * 0.22 + Math.pow(t, 1.5) * 0.01,
-      dmg: 1 + t * 0.08,
-      speed: 1 + Math.min(0.35, t * 0.03),
-      spawnRate: 1 + t * 0.26,
+      hp: (1 + t * 0.35) * actHp,
+      dmg: (1 + t * 0.12) * actDmg,
+      speed: (1 + Math.min(0.25, t * 0.06)) * actSpeed,
+      spawnRate: (1 + t * 0.4) * actSpawn,
     };
   }
 
-  availableTypes(elapsed) {
-    return Object.values(ENEMY_TYPES).filter(t => elapsed >= t.unlockAt);
+  availableTypes(biome) {
+    return biome.enemyPool.map(id => ENEMY_TYPES[id]).filter(Boolean);
   }
 
   spawnPointAround(px, py, worldHalf) {
@@ -82,59 +97,66 @@ export class EnemyManager {
     return { x, y };
   }
 
-  trySpawnBoss(elapsed) {
-    for (const sched of BOSS_SCHEDULE) {
-      if (elapsed >= sched.time && !this.bossSpawned.has(sched.id)) {
-        this.bossSpawned.add(sched.id);
-        return sched.id;
-      }
-    }
-    return null;
-  }
-
-  spawnBoss(id, player, worldHalf) {
-    const type = { ...BOSS_TYPES[id], isBoss: true };
+  spawnBoss(bossId, player, worldHalf) {
+    const type = { ...BOSS_TYPES[bossId], isBoss: true };
     const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
     const e = this.pool.spawn(type, x, y, 1, 1, 1);
-    e.bossId = id;
+    e.bossId = bossId;
     this.activeBoss = e;
-    if (this.onBossSpawned) this.onBossSpawned(type.name);
     if (this.audio) this.audio.bossRoar();
     return e;
   }
 
-  update(dt, elapsed, player, worldHalf, difficultyOverride) {
-    const scale = difficultyOverride || this.difficultyScale(elapsed);
+  spawnElite(biome, player, worldHalf, actNumber) {
+    const types = this.availableTypes(biome);
+    const type = types.reduce((a, b) => (b.hp > a.hp ? b : a), types[0]);
+    const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
+    const actHp = 1 + (actNumber - 1) * 0.6;
+    const actDmg = 1 + (actNumber - 1) * 0.45;
+    const e = this.pool.spawn(type, x, y, 7 * actHp, 1.6 * actDmg, 1.05);
+    e.isElite = true;
+    e.radius *= 1.4;
+    e.affix = ELITE_AFFIXES[Math.floor(randRange(0, ELITE_AFFIXES.length))];
+    if (e.affix === 'shielded') {
+      e.shieldMaxHp = e.maxHp * 0.5;
+      e.shieldHp = e.shieldMaxHp;
+    }
+    this.activeElite = e;
+    if (this.audio) this.audio.bossRoar();
+    return e;
+  }
 
-    // Boss check
-    const bossId = this.trySpawnBoss(elapsed);
-    if (bossId) this.spawnBoss(bossId, player, worldHalf);
+  update(dt, nodeElapsed, player, worldHalf, biome, actNumber, spawningEnabled = true) {
+    const scale = this.difficultyScale(nodeElapsed, actNumber);
 
-    // Regular spawn director
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 && this.pool.active.length < 320) {
-      this.spawnTimer = clamp(0.85 / scale.spawnRate, 0.045, 0.85);
-      const types = this.availableTypes(elapsed);
-      const weighted = types.map(t => ({ weight: t.weight, value: t }));
-      const type = weightedPick(weighted);
-      const groupSize = type.spawnsInGroups ? Math.floor(randRange(3, 6)) : 1;
-      const origin = this.spawnPointAround(player.x, player.y, worldHalf);
-      for (let i = 0; i < groupSize; i++) {
-        const jx = origin.x + randRange(-40, 40);
-        const jy = origin.y + randRange(-40, 40);
-        this.pool.spawn(type, jx, jy, scale.hp, scale.dmg, scale.speed);
+    if (spawningEnabled) {
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0 && this.pool.active.length < 320) {
+        this.spawnTimer = clamp(0.85 / scale.spawnRate, 0.045, 0.85);
+        const types = this.availableTypes(biome);
+        const weighted = types.map(t => ({ weight: t.weight, value: t }));
+        const type = weightedPick(weighted);
+        const groupSize = type.spawnsInGroups ? Math.floor(randRange(3, 6)) : 1;
+        const origin = this.spawnPointAround(player.x, player.y, worldHalf);
+        for (let i = 0; i < groupSize; i++) {
+          const jx = origin.x + randRange(-40, 40);
+          const jy = origin.y + randRange(-40, 40);
+          this.pool.spawn(type, jx, jy, scale.hp, scale.dmg, scale.speed);
+        }
       }
     }
 
-    // Update enemies
     this.pool.update((e) => {
       e.t += dt;
       if (e.hurtFlash > 0) e.hurtFlash -= dt;
       if (e.hitCooldown > 0) e.hitCooldown -= dt;
 
-      this.runBehavior(e, dt, player, worldHalf);
+      const status = updateStatuses(e, dt);
+      e._statusSpeedMult = status.speedMult;
+      if (!status.stunned) {
+        this.runBehavior(e, dt, player, worldHalf);
+      }
 
-      // apply knockback decay
       if (e.knockX || e.knockY) {
         e.x += e.knockX * dt;
         e.y += e.knockY * dt;
@@ -146,7 +168,6 @@ export class EnemyManager {
       e.x = clamp(e.x, -worldHalf, worldHalf);
       e.y = clamp(e.y, -worldHalf, worldHalf);
 
-      // contact damage with player
       const r = e.radius + player.radius;
       if (e.hitCooldown <= 0 && dist2(e.x, e.y, player.x, player.y) <= r * r) {
         e.hitCooldown = 0.55;
@@ -155,13 +176,13 @@ export class EnemyManager {
 
       if (e.hp <= 0) {
         if (e.isBoss) this.activeBoss = null;
+        if (e.isElite) this.activeElite = null;
         if (this.onDeath) this.onDeath(e);
         return false;
       }
       return true;
     });
 
-    // Update enemy projectiles
     this.shots.update((s) => {
       s.life -= dt;
       if (s.life <= 0) return false;
@@ -181,6 +202,7 @@ export class EnemyManager {
       case 'chase': return this.behaviorChase(e, dt, player);
       case 'ranged': return this.behaviorRanged(e, dt, player);
       case 'boss_warden': return this.behaviorWarden(e, dt, player);
+      case 'boss_swarmmother': return this.behaviorSwarmMother(e, dt, player);
       case 'boss_eclipse': return this.behaviorEclipse(e, dt, player, worldHalf);
       default: return this.behaviorChase(e, dt, player);
     }
@@ -188,8 +210,9 @@ export class EnemyManager {
 
   moveToward(e, dt, tx, ty, speedMult = 1) {
     const a = angleTo(e.x, e.y, tx, ty);
-    e.x += Math.cos(a) * e.speed * speedMult * dt;
-    e.y += Math.sin(a) * e.speed * speedMult * dt;
+    const mult = speedMult * (e._statusSpeedMult ?? 1);
+    e.x += Math.cos(a) * e.speed * mult * dt;
+    e.y += Math.sin(a) * e.speed * mult * dt;
     return a;
   }
 
@@ -239,6 +262,29 @@ export class EnemyManager {
     }
   }
 
+  behaviorSwarmMother(e, dt, player) {
+    const d = dist(e.x, e.y, player.x, player.y);
+    this.moveToward(e, dt, player.x, player.y, 0.55);
+    e.pulseTimer = (e.pulseTimer ?? e.type.pulseCooldown) - dt;
+    e.summonTimer = (e.summonTimer ?? 2) - dt;
+    if (e.pulseTimer <= 0) {
+      e.pulseTimer = e.type.pulseCooldown || 3.2;
+      e.pulsing = 0.3;
+      if (d <= (e.type.pulseRadius || 130) && this.onPlayerHit) {
+        this.onPlayerHit(e.type.pulseDamage || 20, player.x, player.y);
+      }
+    }
+    if (e.pulsing > 0) e.pulsing -= dt;
+    if (e.summonTimer <= 0) {
+      e.summonTimer = e.type.summonCooldown || 5;
+      for (let i = 0; i < 4; i++) {
+        const a = randRange(0, TAU);
+        const sx = e.x + Math.cos(a) * 70, sy = e.y + Math.sin(a) * 70;
+        this.pool.spawn(ENEMY_TYPES.swarmling, sx, sy, 1 + (e.t / 60), 1, 1);
+      }
+    }
+  }
+
   behaviorEclipse(e, dt, player, worldHalf) {
     e.burstTimer = (e.burstTimer ?? e.type.burstCooldown) - dt;
     e.dashTimer = (e.dashTimer ?? e.type.dashCooldown) - dt;
@@ -264,14 +310,31 @@ export class EnemyManager {
     }
   }
 
-  // Called by weapon system when a projectile hits an enemy.
-  damageEnemy(e, amount, knockAngle, knockForce = 0) {
-    e.hp -= amount;
+  // Called by weapon system when a projectile hits an enemy. Returns the
+  // actual damage applied (after resistance) so callers can show accurate
+  // damage-number popups.
+  damageEnemy(e, amount, knockAngle, knockForce = 0, damageType = 'physical') {
+    const resist = (e.type && e.type.resistances && e.type.resistances[damageType]) || 1;
+    const finalAmount = amount * resist;
+    let remaining = finalAmount;
+    if (e.shieldHp > 0) {
+      const absorbed = Math.min(e.shieldHp, remaining);
+      e.shieldHp -= absorbed;
+      remaining -= absorbed;
+    }
+    e.hp -= remaining;
     e.hurtFlash = 0.12;
     if (knockForce && !e.isBoss) {
       e.knockX += Math.cos(knockAngle) * knockForce;
       e.knockY += Math.sin(knockAngle) * knockForce;
     }
+    switch (damageType) {
+      case 'fire': applyBurn(e, finalAmount * 0.25, 3); break;
+      case 'poison': applyPoison(e, finalAmount * 0.18, 4); break;
+      case 'shock': applyShock(e, 0.35); break;
+      case 'frost': applyFrost(e, 0.2, 2.2); break;
+    }
+    return finalAmount;
   }
 
   queryNearby(x, y, radius, fn) {
@@ -293,25 +356,53 @@ export class EnemyManager {
   render(ctx, camX, camY) {
     for (const e of this.pool.active) {
       const sx = e.x - camX, sy = e.y - camY;
+      const statusGlow = statusGlowColor(e);
       ctx.save();
       ctx.translate(sx, sy);
-      ctx.shadowColor = e.glow;
-      ctx.shadowBlur = e.isBoss ? 22 : 10;
+      ctx.shadowColor = statusGlow || e.glow;
+      ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : e.color;
       ctx.beginPath();
-      const spikes = e.isBoss ? 10 : 5;
+      const spikes = e.isBoss ? 10 : (e.isElite ? 7 : 5);
       drawSpikyBlob(ctx, e.radius, spikes, e.t);
       ctx.fill();
+      if (statusGlow) {
+        ctx.strokeStyle = statusGlow;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 3, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (e.isElite) {
+        ctx.strokeStyle = '#ffd54a';
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 6, 0, TAU);
+        ctx.stroke();
+      }
       ctx.restore();
 
-      // HP bar for bosses / tough enemies
-      if (e.isBoss || e.maxHp > 30) {
-        const w = e.isBoss ? 70 : 26;
+      if (e.isBoss || e.isElite || e.maxHp > 30) {
+        const w = e.isBoss ? 70 : (e.isElite ? 50 : 26);
         const pct = clamp(e.hp / e.maxHp, 0, 1);
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(sx - w / 2, sy - e.radius - 12, w, 5);
-        ctx.fillStyle = e.isBoss ? '#ff5e8a' : '#ff6b6b';
+        ctx.fillStyle = e.isBoss ? '#ff5e8a' : (e.isElite ? '#ffd54a' : '#ff6b6b');
         ctx.fillRect(sx - w / 2, sy - e.radius - 12, w * pct, 5);
+        if (e.shieldMaxHp > 0) {
+          const spct = clamp(e.shieldHp / e.shieldMaxHp, 0, 1);
+          ctx.fillStyle = 'rgba(94, 230, 255, 0.85)';
+          ctx.fillRect(sx - w / 2, sy - e.radius - 18, w * spct, 3);
+        }
+      }
+      if (e.isElite && e.affix) {
+        ctx.fillStyle = '#ffd54a';
+        ctx.font = '600 10px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(affixLabel(e.affix), sx, sy - e.radius - 22);
       }
     }
 
@@ -328,6 +419,9 @@ export class EnemyManager {
     ctx.shadowBlur = 0;
   }
 }
+
+const AFFIX_LABELS = { explosive: 'EXPLOSIVE', shielded: 'SHIELDED', frozenAura: 'FROST AURA' };
+function affixLabel(affix) { return AFFIX_LABELS[affix] || affix; }
 
 function drawSpikyBlob(ctx, radius, spikes, t) {
   ctx.beginPath();

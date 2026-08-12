@@ -5,7 +5,7 @@ import { Pool, clamp, dist, dist2, angleTo, randRange, TAU } from './utils.js';
 // `evolvesInto` + `evolutionRequires` drive the evolution check.
 export const WEAPONS = {
   shardCannon: {
-    id: 'shardCannon', name: 'Shard Cannon', maxLevel: 8,
+    id: 'shardCannon', name: 'Shard Cannon', maxLevel: 8, damageType: 'physical',
     desc: 'Fires a piercing shard at the nearest foe.',
     evolvedName: 'Prism Cannon', evolutionRequires: 'might',
     getStats(level, player) {
@@ -20,7 +20,7 @@ export const WEAPONS = {
     },
   },
   pulseBlade: {
-    id: 'pulseBlade', name: 'Pulse Blade', maxLevel: 8,
+    id: 'pulseBlade', name: 'Pulse Blade', maxLevel: 8, damageType: 'physical',
     desc: 'Sweeps a damaging arc in front of you.',
     evolvedName: 'Ring Blade', evolutionRequires: 'vitality',
     getStats(level, player) {
@@ -33,8 +33,8 @@ export const WEAPONS = {
     },
   },
   orbitDrones: {
-    id: 'orbitDrones', name: 'Orbit Drones', maxLevel: 8,
-    desc: 'Orbiting drones that shred anything they touch.',
+    id: 'orbitDrones', name: 'Orbit Drones', maxLevel: 8, damageType: 'frost',
+    desc: 'Orbiting drones that shred and chill anything they touch.',
     evolvedName: 'Halo Storm', evolutionRequires: 'amulet',
     getStats(level, player) {
       return {
@@ -47,8 +47,8 @@ export const WEAPONS = {
     },
   },
   novaBurst: {
-    id: 'novaBurst', name: 'Nova Burst', maxLevel: 8,
-    desc: 'Periodic shockwave around you.',
+    id: 'novaBurst', name: 'Nova Burst', maxLevel: 8, damageType: 'fire',
+    desc: 'Periodic fiery shockwave around you.',
     evolvedName: 'Supernova', evolutionRequires: 'haste',
     getStats(level, player) {
       return {
@@ -59,8 +59,8 @@ export const WEAPONS = {
     },
   },
   homingMissile: {
-    id: 'homingMissile', name: 'Homing Missile', maxLevel: 8,
-    desc: 'Slow but relentless tracking missiles.',
+    id: 'homingMissile', name: 'Homing Missile', maxLevel: 8, damageType: 'poison',
+    desc: 'Slow but relentless corrosive tracking missiles.',
     evolvedName: 'Swarm Missiles', evolutionRequires: 'magnet',
     getStats(level, player) {
       return {
@@ -74,7 +74,7 @@ export const WEAPONS = {
     },
   },
   chainLightning: {
-    id: 'chainLightning', name: 'Chain Lightning', maxLevel: 8,
+    id: 'chainLightning', name: 'Chain Lightning', maxLevel: 8, damageType: 'shock',
     desc: 'Arcs between nearby enemies.',
     evolvedName: 'Storm Chain', evolutionRequires: 'fortune',
     getStats(level, player) {
@@ -89,11 +89,11 @@ export const WEAPONS = {
 };
 
 function makeBullet() {
-  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0 };
+  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, damageType: 'physical', pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0 };
 }
 
 function makeEffect() {
-  return { kind: 'arc', x: 0, y: 0, angle: 0, arc: 0, range: 0, life: 0.15, maxLife: 0.15, damage: 0, color: '#fff', hitSet: null, radius: 0, growTo: 0, __alive: true, points: null };
+  return { kind: 'arc', x: 0, y: 0, angle: 0, arc: 0, range: 0, life: 0.15, maxLife: 0.15, damage: 0, damageType: 'physical', color: '#fff', hitSet: null, radius: 0, growTo: 0, __alive: true, points: null };
 }
 
 export class WeaponSystem {
@@ -105,6 +105,7 @@ export class WeaponSystem {
     this.bullets = new Pool(makeBullet, (b, opts) => {
       Object.assign(b, {
         x: opts.x, y: opts.y, vx: opts.vx, vy: opts.vy, damage: opts.damage,
+        damageType: opts.damageType ?? 'physical',
         pierceLeft: opts.pierce ?? 0, radius: opts.radius ?? 6, life: opts.life ?? 3,
         color: opts.color ?? '#5ee6ff', kind: opts.kind ?? 'bullet', evolvedSplit: !!opts.evolvedSplit,
         splash: opts.splash ?? 0, targetRef: opts.targetRef ?? null, turnRate: opts.turnRate ?? 0,
@@ -117,12 +118,34 @@ export class WeaponSystem {
       Object.assign(e, {
         kind: opts.kind, x: opts.x, y: opts.y, angle: opts.angle ?? 0, arc: opts.arc ?? 0,
         range: opts.range ?? 0, life: opts.life ?? 0.15, maxLife: opts.life ?? 0.15,
-        damage: opts.damage ?? 0, color: opts.color ?? '#fff', radius: opts.radius ?? 0,
+        damage: opts.damage ?? 0, damageType: opts.damageType ?? 'physical',
+        color: opts.color ?? '#fff', radius: opts.radius ?? 0,
         growTo: opts.growTo ?? 0, points: opts.points ?? null,
       });
       e.hitSet = e.hitSet || new Set();
       e.hitSet.clear();
     });
+
+    // Recomputed once per update() tick — see computeSynergy().
+    this.synergy = { physical: 1, fire: 1, poison: 1, shock: 1, frost: 1, elementCount: 0 };
+  }
+
+  // Two build archetypes: "Physical Focus" (own both physical weapons) and
+  // "Elemental Diversity" (own weapons across distinct non-physical types).
+  // Both are passive bonuses that reward a real strategic weapon-picking
+  // choice rather than just picking whatever's offered.
+  computeSynergy() {
+    const elements = new Set();
+    let hasShard = false, hasPulse = false;
+    for (const slot of this.slots) {
+      const def = WEAPONS[slot.id];
+      if (def.damageType && def.damageType !== 'physical') elements.add(def.damageType);
+      if (slot.id === 'shardCannon') hasShard = true;
+      if (slot.id === 'pulseBlade') hasPulse = true;
+    }
+    const diversity = 1 + elements.size * 0.05;
+    const physicalFocus = (hasShard && hasPulse) ? 1.15 : 1;
+    return { physical: physicalFocus, fire: diversity, poison: diversity, shock: diversity, frost: diversity, elementCount: elements.size };
   }
 
   reset() {
@@ -163,10 +186,12 @@ export class WeaponSystem {
   }
 
   update(dt, player) {
+    this.synergy = this.computeSynergy();
     for (const slot of this.slots) {
       const def = WEAPONS[slot.id];
       const stats = def.getStats(slot.level, player);
       if (slot.evolved) applyEvolutionBuffs(slot.id, stats);
+      if (stats.damage != null) stats.damage *= (this.synergy[def.damageType] || 1);
 
       if (slot.id === 'orbitDrones') {
         this.updateOrbit(slot, stats, player, dt);
@@ -203,7 +228,7 @@ export class WeaponSystem {
       const a = baseAngle + (i - (stats.count - 1) / 2) * spread;
       this.bullets.spawn({
         x: player.x, y: player.y, vx: Math.cos(a) * stats.speed, vy: Math.sin(a) * stats.speed,
-        damage: stats.damage, pierce: stats.pierce, radius: 6, life: 2.2,
+        damage: stats.damage, damageType: WEAPONS.shardCannon.damageType, pierce: stats.pierce, radius: 6, life: 2.2,
         color: slot.evolved ? '#ffd54a' : '#5ee6ff', kind: 'bullet', evolvedSplit: slot.evolved,
       });
     }
@@ -214,7 +239,8 @@ export class WeaponSystem {
     const arc = slot.evolved ? TAU : stats.arc;
     this.effects.spawn({
       kind: 'arc', x: player.x, y: player.y, angle: player.facing, arc,
-      range: stats.range, life: 0.16, damage: stats.damage, color: slot.evolved ? '#ffd54a' : '#ff8a5e',
+      range: stats.range, life: 0.16, damage: stats.damage, damageType: WEAPONS.pulseBlade.damageType,
+      color: slot.evolved ? '#ffd54a' : '#ff8a5e',
     });
     if (this.audio) this.audio.hit();
   }
@@ -228,8 +254,8 @@ export class WeaponSystem {
     const knock = slot.evolved ? 260 : 140;
     this.enemyManager.queryNearby(player.x, player.y, stats.radius, (e) => {
       const a = angleTo(player.x, player.y, e.x, e.y);
-      this.enemyManager.damageEnemy(e, stats.damage, a, knock);
-      this.particles.damageText(e.x, e.y - 10, stats.damage);
+      const dealt = this.enemyManager.damageEnemy(e, stats.damage, a, knock, WEAPONS.novaBurst.damageType);
+      this.particles.damageText(e.x, e.y - 10, dealt);
     });
     if (this.audio) this.audio.explosion();
   }
@@ -240,7 +266,7 @@ export class WeaponSystem {
       const a = target ? angleTo(player.x, player.y, target.x, target.y) : randRange(0, TAU);
       this.bullets.spawn({
         x: player.x, y: player.y, vx: Math.cos(a) * stats.speed, vy: Math.sin(a) * stats.speed,
-        damage: stats.damage, pierce: 0, radius: 7, life: 4,
+        damage: stats.damage, damageType: WEAPONS.homingMissile.damageType, pierce: 0, radius: 7, life: 4,
         color: slot.evolved ? '#ffd54a' : '#c98cff', kind: 'missile', splash: stats.splash,
         targetRef: target, turnRate: stats.turnRate, speed: stats.speed,
       });
@@ -257,8 +283,8 @@ export class WeaponSystem {
     let bounces = stats.bounces;
     while (current && bounces > 0) {
       hit.add(current);
-      this.enemyManager.damageEnemy(current, dmg, angleTo(originX, originY, current.x, current.y), 60);
-      this.particles.damageText(current.x, current.y - 10, dmg);
+      const dealt = this.enemyManager.damageEnemy(current, dmg, angleTo(originX, originY, current.x, current.y), 60, WEAPONS.chainLightning.damageType);
+      this.particles.damageText(current.x, current.y - 10, dealt);
       this.particles.spark(current.x, current.y, 0, '#5ee6ff', 5);
       points.push([current.x, current.y]);
       originX = current.x; originY = current.y;
@@ -290,7 +316,7 @@ export class WeaponSystem {
       cd -= dt;
       this.enemyManager.queryNearby(ox, oy, 16, (e) => {
         if (cd <= 0) {
-          this.enemyManager.damageEnemy(e, stats.damage, angleTo(ox, oy, e.x, e.y), 90);
+          this.enemyManager.damageEnemy(e, stats.damage, angleTo(ox, oy, e.x, e.y), 90, WEAPONS.orbitDrones.damageType);
           this.particles.spark(e.x, e.y, 0, slot.evolved ? '#ffd54a' : '#5ee6ff', 2);
           cd = stats.tickCooldown;
         }
@@ -331,14 +357,14 @@ export class WeaponSystem {
       if (hitOne) {
         b.hitSet.add(hitOne);
         const a = angleTo(b.x, b.y, hitOne.x, hitOne.y);
-        this.enemyManager.damageEnemy(hitOne, b.damage, a, 120);
-        this.particles.damageText(hitOne.x, hitOne.y - 10, b.damage);
+        const dealt = this.enemyManager.damageEnemy(hitOne, b.damage, a, 120, b.damageType);
+        this.particles.damageText(hitOne.x, hitOne.y - 10, dealt);
         this.particles.spark(b.x, b.y, Math.atan2(b.vy, b.vx), b.color, 4);
 
         if (b.kind === 'missile') {
           this.enemyManager.queryNearby(b.x, b.y, b.splash, (e2) => {
             if (e2 === hitOne) return;
-            this.enemyManager.damageEnemy(e2, b.damage * 0.6, angleTo(b.x, b.y, e2.x, e2.y), 80);
+            this.enemyManager.damageEnemy(e2, b.damage * 0.6, angleTo(b.x, b.y, e2.x, e2.y), 80, b.damageType);
           });
           this.particles.burst(b.x, b.y, { count: 14, color: '#ffb14a', speed: 180, life: 0.4, glow: true });
           if (this.audio) this.audio.explosion();
@@ -375,8 +401,8 @@ export class WeaponSystem {
           while (diff < -Math.PI) diff += TAU;
           if (Math.abs(diff) <= e.arc / 2) {
             e.hitSet.add(en);
-            this.enemyManager.damageEnemy(en, e.damage, a, 150);
-            this.particles.damageText(en.x, en.y - 10, e.damage);
+            const dealt = this.enemyManager.damageEnemy(en, e.damage, a, 150, e.damageType);
+            this.particles.damageText(en.x, en.y - 10, dealt);
             this.particles.spark(en.x, en.y, a, '#ff8a5e', 3);
           }
         });

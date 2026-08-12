@@ -17,6 +17,8 @@ ORDER = [
     "particles.js",
     "player.js",
     "enemyData.js",
+    "runMap.js",
+    "statusEffects.js",
     "enemies.js",
     "weapons.js",
     "upgrades.js",

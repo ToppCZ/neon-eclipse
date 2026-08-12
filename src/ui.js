@@ -1,5 +1,5 @@
 import { WEAPONS } from './weapons.js';
-import { PASSIVES } from './upgrades.js';
+import { PASSIVES, TIER_COLORS } from './upgrades.js';
 import { META_UPGRADES, upgradeCost } from './meta.js';
 import { formatTime, clamp } from './utils.js';
 
@@ -17,28 +17,47 @@ const ICONS = {
   magnet: { glyph: 'Mg', color: '#ffd54a' },
   fortune: { glyph: 'F', color: '#ffd54a' },
   boots: { glyph: 'B', color: '#7CFC9A' },
-  gold: { glyph: '●', color: '#ffd54a' },
+  cores: { glyph: '◈', color: '#ffd54a' },
+  glassCannon: { glyph: '⚡', color: '#ff5e8a' },
+  fortress: { glyph: '▣', color: '#ff8a5e' },
+  berserker: { glyph: '⚔', color: '#ffd54a' },
+  vampire: { glyph: '♥', color: '#7CFC9A' },
+};
+
+const NODE_ICONS = {
+  combat: { glyph: '⚔', color: '#ff8a5e' },
+  elite: { glyph: '☠', color: '#ffd54a' },
+  shop: { glyph: '$', color: '#7CFC9A' },
+  treasure: { glyph: '◆', color: '#c98cff' },
+  rest: { glyph: '♥', color: '#5ee6ff' },
+  boss: { glyph: '★', color: '#ff5e8a' },
 };
 
 function iconFor(id) { return ICONS[id] || { glyph: '?', color: '#fff' }; }
+function nodeIconFor(type) { return NODE_ICONS[type] || { glyph: '?', color: '#fff' }; }
 
 class UI {
   constructor() {
     this.el = {};
     [
       'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
+      'run-progress',
       'boss-banner', 'kill-counter',
       'screen-menu', 'btn-play', 'btn-shop', 'menu-stats',
       'screen-characters', 'character-list', 'btn-back-chars',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
-      'screen-levelup', 'levelup-choices',
+      'screen-choice', 'choice-title', 'choice-list',
+      'screen-map', 'map-header', 'map-choices',
+      'screen-node-shop', 'node-shop-cores', 'node-shop-list', 'btn-node-shop-reroll', 'node-shop-reroll-cost', 'btn-node-shop-continue',
       'screen-pause', 'btn-resume', 'btn-quit',
       'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu',
       'mute-btn',
     ].forEach((id) => { this.el[camel(id)] = document.getElementById(id); });
 
-    this.screens = ['screen-menu', 'screen-characters', 'screen-shop', 'screen-levelup', 'screen-pause', 'screen-end']
-      .map(id => document.getElementById(id));
+    this.screens = [
+      'screen-menu', 'screen-characters', 'screen-shop', 'screen-choice',
+      'screen-map', 'screen-node-shop', 'screen-pause', 'screen-end',
+    ].map(id => document.getElementById(id));
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
@@ -46,17 +65,18 @@ class UI {
 
   setHudVisible(visible) { this.el.hud.classList.toggle('hidden', !visible); }
 
-  updateHud(player, elapsed, weaponSystem, killCount) {
+  updateHud(player, elapsed, weaponSystem, killCount, runLabel) {
     const hpPct = clamp(player.hp / player.maxHp, 0, 1);
     this.el.hpBar.style.transform = `scaleX(${hpPct})`;
     this.el.hpLabel.textContent = `${Math.ceil(player.hp)} / ${Math.round(player.maxHp)}`;
     const xpPct = clamp(player.xp / player.xpToNext, 0, 1);
     this.el.xpBar.style.transform = `scaleX(${xpPct})`;
     this.el.timer.textContent = formatTime(elapsed);
-    this.el.goldVal.textContent = Math.floor(player.gold);
+    this.el.goldVal.textContent = Math.floor(player.cores);
     this.el.levelBadge.textContent = `Lv ${player.level}`;
     this.el.killCounter.textContent = `Kills: ${killCount}`;
     this.el.killCounter.classList.remove('hidden');
+    if (runLabel) { this.el.runProgress.textContent = runLabel; this.el.runProgress.classList.remove('hidden'); }
 
     this.el.weaponTray.innerHTML = '';
     for (const slot of weaponSystem.slots) {
@@ -88,9 +108,10 @@ class UI {
     this.show('screen-menu');
     this.setHudVisible(false);
     this.el.killCounter.classList.add('hidden');
+    this.el.runProgress.classList.add('hidden');
     this.el.menuStats.innerHTML = `
       <div><b>${meta.stats.totalRuns}</b>Runs</div>
-      <div><b>${formatTime(meta.stats.bestTime)}</b>Best Time</div>
+      <div><b>${meta.stats.bestAct || 0}</b>Best Act</div>
       <div><b>${meta.stats.bestLevel}</b>Best Level</div>
       <div><b>${meta.gold}</b>Gold</div>
     `;
@@ -138,24 +159,82 @@ class UI {
     }
   }
 
-  showLevelUp(choices, onPick) {
+  // Generic "pick 1 of N" modal — used for in-combat level-ups, post-node
+  // rewards, treasure nodes, and rest-site choices.
+  showChoiceModal(title, choices, onPick) {
     this.hideAllScreens();
-    this.show('screen-levelup');
-    this.el.levelupChoices.innerHTML = '';
+    this.show('screen-choice');
+    this.el.choiceTitle.textContent = title;
+    this.el.choiceList.innerHTML = '';
     for (const choice of choices) {
       const icon = iconFor(choice.id);
+      const tierColor = TIER_COLORS[choice.tier] || null;
       const card = document.createElement('div');
       card.className = 'choice-card';
+      if (tierColor) card.style.borderColor = tierColor + '66';
       card.innerHTML = `
         <div class="choice-icon" style="color:${icon.color};background:${icon.color}22;">${icon.glyph}</div>
         <div class="choice-text">
           <b>${choice.title}</b>
-          <span class="sub">${choice.subtitle}</span>
+          <span class="sub" ${tierColor ? `style="color:${tierColor}"` : ''}>${choice.subtitle}${choice.tier ? ` · ${choice.tier}` : ''}</span>
           <p>${choice.desc}</p>
         </div>`;
       card.addEventListener('click', () => onPick(choice));
-      this.el.levelupChoices.appendChild(card);
+      this.el.choiceList.appendChild(card);
     }
+  }
+
+  showMap(run, onPick) {
+    this.hideAllScreens();
+    this.show('screen-map');
+    this.setHudVisible(false);
+    const act = run.acts[run.actIndex];
+    const step = act.steps[run.stepIndex];
+    this.el.mapHeader.textContent = `Act ${act.actNumber} — ${act.biome.name}  ·  Step ${run.stepIndex + 1}/${act.steps.length}`;
+    this.el.mapChoices.innerHTML = '';
+    for (const node of step.choices) {
+      const icon = nodeIconFor(node.type);
+      const card = document.createElement('div');
+      card.className = 'node-card';
+      card.innerHTML = `
+        <div class="node-icon" style="color:${icon.color};background:${icon.color}22;border-color:${icon.color}55;">${icon.glyph}</div>
+        <b>${node.label}</b>
+        <span class="node-type">${node.type}</span>`;
+      card.addEventListener('click', () => onPick(node));
+      this.el.mapChoices.appendChild(card);
+    }
+  }
+
+  showNodeShop(state, onBuy, onReroll, onContinue) {
+    this.hideAllScreens();
+    this.show('screen-node-shop');
+    this.renderNodeShop(state, onBuy, onReroll, onContinue);
+  }
+
+  renderNodeShop(state, onBuy, onReroll, onContinue) {
+    this.el.nodeShopCores.textContent = Math.floor(state.player.cores);
+    this.el.nodeShopList.innerHTML = '';
+    for (const offer of state.offers) {
+      const icon = iconFor(offer.id);
+      const tierColor = TIER_COLORS[offer.tier] || null;
+      const afford = state.player.cores >= offer.cost;
+      const row = document.createElement('div');
+      row.className = 'shop-row';
+      if (tierColor) row.style.borderColor = tierColor + '66';
+      row.innerHTML = `
+        <div class="shop-row-info">
+          <b style="color:${icon.color}">${icon.glyph} ${offer.title}</b>
+          <p ${tierColor ? `style="color:${tierColor}"` : ''}>${offer.subtitle}${offer.tier ? ` · ${offer.tier}` : ''} — ${offer.desc}</p>
+        </div>
+        <button class="btn shop-buy" ${offer.bought || !afford ? 'disabled' : ''}>${offer.bought ? 'Bought' : `◈ ${offer.cost}`}</button>`;
+      const btn = row.querySelector('.shop-buy');
+      btn.addEventListener('click', () => onBuy(offer));
+      this.el.nodeShopList.appendChild(row);
+    }
+    this.el.nodeShopRerollCost.textContent = state.rerollCost;
+    this.el.btnNodeShopReroll.disabled = state.player.cores < state.rerollCost;
+    this.el.btnNodeShopReroll.onclick = onReroll;
+    this.el.btnNodeShopContinue.onclick = onContinue;
   }
 
   showPause() { this.hideAllScreens(); this.show('screen-pause'); }
@@ -163,12 +242,14 @@ class UI {
   showEnd(victory, stats) {
     this.hideAllScreens();
     this.show('screen-end');
-    this.el.endTitle.textContent = victory ? 'You Survived!' : 'You Fell...';
+    this.el.endTitle.textContent = victory ? 'Run Complete!' : 'You Fell...';
     this.el.endTitle.style.color = victory ? '#7CFC9A' : '#ff5e8a';
     this.el.endStats.innerHTML = `
-      <div><b>${formatTime(stats.time)}</b>Time Survived</div>
+      <div><b>Act ${stats.actReached}</b>Act Reached</div>
+      <div><b>${stats.nodesCleared}</b>Nodes Cleared</div>
       <div><b>${stats.level}</b>Level Reached</div>
       <div><b>${stats.kills}</b>Kills</div>
+      <div><b>${formatTime(stats.time)}</b>Time Survived</div>
       <div><b>${stats.goldEarned}</b>Gold Earned</div>
     `;
   }

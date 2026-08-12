@@ -1,44 +1,61 @@
 import { WEAPONS } from './weapons.js';
 import { weightedPick } from './utils.js';
 
-// Passive ids intentionally match each weapon's `evolutionRequires`.
+// Passive ids intentionally match each weapon's `evolutionRequires`. Each
+// `apply` bakes in a "mastery" kicker at max level (5) — a small extra jump
+// so maxing a passive feels like it transforms into a stronger unique
+// version, the same spirit as weapon evolution, without a second bookkeeping
+// system for it.
 export const PASSIVES = {
   might: {
     id: 'might', name: 'Might', maxLevel: 5, icon: 'might',
-    desc: '+8% damage',
-    apply(player, level) { player.might *= 1 + 0.08 * level; },
+    desc: '+8% damage (+mastery at 5)',
+    apply(player, level) { player.might *= 1 + 0.08 * level + (level >= 5 ? 0.1 : 0); },
   },
   vitality: {
     id: 'vitality', name: 'Vitality', maxLevel: 5, icon: 'vitality',
-    desc: '+15% max HP',
-    apply(player, level) { player.maxHp *= 1 + 0.15 * level; },
+    desc: '+15% max HP (+mastery at 5)',
+    apply(player, level) { player.maxHp *= 1 + 0.15 * level + (level >= 5 ? 0.1 : 0); },
   },
   amulet: {
     id: 'amulet', name: 'Amulet', maxLevel: 5, icon: 'amulet',
-    desc: '+8% area',
-    apply(player, level) { player.area *= 1 + 0.08 * level; },
+    desc: '+8% area (+mastery at 5)',
+    apply(player, level) { player.area *= 1 + 0.08 * level + (level >= 5 ? 0.1 : 0); },
   },
   haste: {
     id: 'haste', name: 'Haste', maxLevel: 5, icon: 'haste',
-    desc: '-6% cooldowns',
-    apply(player, level) { player.cooldownMult *= Math.max(0.4, 1 - 0.06 * level); },
+    desc: '-6% cooldowns (+mastery at 5)',
+    apply(player, level) { player.cooldownMult *= Math.max(0.35, 1 - 0.06 * level - (level >= 5 ? 0.05 : 0)); },
   },
   magnet: {
     id: 'magnet', name: 'Magnet', maxLevel: 5, icon: 'magnet',
-    desc: '+25% pickup radius',
-    apply(player, level) { player.magnet *= 1 + 0.25 * level; },
+    desc: '+25% pickup radius (+mastery at 5)',
+    apply(player, level) { player.magnet *= 1 + 0.25 * level + (level >= 5 ? 0.15 : 0); },
   },
   fortune: {
     id: 'fortune', name: 'Fortune', maxLevel: 5, icon: 'fortune',
-    desc: '+12% luck & gold',
-    apply(player, level) { player.luck *= 1 + 0.12 * level; },
+    desc: '+12% luck & cores (+mastery at 5)',
+    apply(player, level) { player.luck *= 1 + 0.12 * level + (level >= 5 ? 0.1 : 0); },
   },
   boots: {
     id: 'boots', name: 'Boots', maxLevel: 5, icon: 'boots',
-    desc: '+7% move speed',
-    apply(player, level) { player.speed *= 1 + 0.07 * level; },
+    desc: '+7% move speed (+mastery at 5)',
+    apply(player, level) { player.speed *= 1 + 0.07 * level + (level >= 5 ? 0.1 : 0); },
   },
 };
+
+export const TIER_COLORS = { common: '#9aa4c9', rare: '#5ee6ff', legendary: '#ffd54a' };
+
+function weaponTier(level) {
+  if (level >= 7) return 'legendary';
+  if (level >= 4) return 'rare';
+  return 'common';
+}
+function passiveTier(level) {
+  if (level >= 5) return 'legendary';
+  if (level >= 3) return 'rare';
+  return 'common';
+}
 
 const WEAPON_IDS = Object.keys(WEAPONS);
 const PASSIVE_IDS = Object.keys(PASSIVES);
@@ -54,10 +71,11 @@ export function rollUpgradeChoices(player, weaponSystem, n = 3) {
     const def = WEAPONS[id];
     if (slot) {
       if (slot.level < def.maxLevel) {
-        pool.push({ kind: 'weaponLevel', id, weight: 10, title: def.name, subtitle: `Level ${slot.level + 1}`, desc: def.desc, level: slot.level + 1, maxLevel: def.maxLevel });
+        const level = slot.level + 1;
+        pool.push({ kind: 'weaponLevel', id, weight: 10, title: def.name, subtitle: `Level ${level}`, desc: def.desc, level, maxLevel: def.maxLevel, tier: weaponTier(level) });
       }
     } else if (weaponSystem.weaponCount() < 6) {
-      pool.push({ kind: 'weaponNew', id, weight: 7, title: def.name, subtitle: 'New Weapon', desc: def.desc, level: 1, maxLevel: def.maxLevel });
+      pool.push({ kind: 'weaponNew', id, weight: 7, title: def.name, subtitle: 'New Weapon', desc: def.desc, level: 1, maxLevel: def.maxLevel, tier: 'common' });
     }
   }
 
@@ -65,14 +83,15 @@ export function rollUpgradeChoices(player, weaponSystem, n = 3) {
     const def = PASSIVES[id];
     const level = player.passiveLevel(id);
     if (level < def.maxLevel) {
-      pool.push({ kind: 'passive', id, weight: 8, title: def.name, subtitle: level === 0 ? 'New Passive' : `Level ${level + 1}`, desc: def.desc, level: level + 1, maxLevel: def.maxLevel });
+      const nextLevel = level + 1;
+      pool.push({ kind: 'passive', id, weight: 8, title: def.name, subtitle: level === 0 ? 'New Passive' : `Level ${nextLevel}`, desc: def.desc, level: nextLevel, maxLevel: def.maxLevel, tier: passiveTier(nextLevel) });
     }
   }
 
-  // Small gold-only fallback so the pool is never empty late-game once
+  // Small cores-only fallback so the pool is never empty late-game once
   // everything is maxed.
   if (pool.length === 0) {
-    return [{ kind: 'gold', id: 'gold', weight: 1, title: 'Cache of Gold', subtitle: '+50 Gold', desc: 'Everything is maxed. Take the spoils.' }];
+    return [{ kind: 'cores', id: 'cores', weight: 1, title: 'Cache of Cores', subtitle: '+50 Cores', desc: 'Everything is maxed. Take the spoils.', tier: 'common' }];
   }
 
   const luckBias = Math.min(2.2, player.luck);
@@ -101,9 +120,29 @@ export function applyUpgradeChoice(choice, player, weaponSystem) {
       player.addPassive(choice.id, PASSIVES[choice.id].maxLevel);
       player.recomputeStats(PASSIVES);
       break;
-    case 'gold':
-      player.gold += 50;
+    case 'cores':
+      player.cores += 50;
       break;
   }
   weaponSystem.checkEvolutions(player);
+}
+
+// ---- Shop nodes: same candidate pool as level-up choices, but priced in
+// Cores and offered several at once without pausing the run. ----
+function costFor(choice) {
+  switch (choice.kind) {
+    case 'weaponNew': return 45;
+    case 'weaponLevel': return 22 + choice.level * 6;
+    case 'passive': return 18 + choice.level * 5;
+    default: return 20;
+  }
+}
+
+export function rollShopOffers(player, weaponSystem, n = 4) {
+  const choices = rollUpgradeChoices(player, weaponSystem, n);
+  return choices.map(c => ({ ...c, cost: costFor(c) }));
+}
+
+export function shopRerollCost(rerollCount) {
+  return 15 + rerollCount * 10;
 }

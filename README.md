@@ -1,8 +1,8 @@
 # Neon Eclipse
 
-A bullet-heaven / survivors-like — no external art or audio assets, everything (visuals, sound, music) is generated at runtime from vanilla HTML5 Canvas and WebAudio. Ships two ways: as a browser page, and as a standalone Windows desktop app.
+A bullet-heaven combat core wrapped in a strategic roguelike run structure — no external art or audio assets, everything (visuals, sound, music) is generated at runtime from vanilla HTML5 Canvas and WebAudio. Ships two ways: as a browser page, and as a standalone Windows desktop app.
 
-Move to dodge, your weapons auto-fire, kill swarms, level up, evolve your build, and survive the run.
+Pick a character and a build-defining relic, then navigate a branching map across 3 acts — combat, elite, shop, treasure, and rest nodes — choosing your path between fights. In combat, move to dodge and dash past danger while your weapons auto-fire; between fights, spend in-run Cores at shops, pick tiered rewards, and lean into elemental damage-type synergies against enemies with real resistances and weaknesses. Clear all 3 acts and their bosses to win the run.
 
 ## Play it — Windows desktop app
 
@@ -33,16 +33,19 @@ Then open `http://localhost:8080`.
 ## Controls
 
 - **Move:** WASD or Arrow Keys
+- **Dash:** Space or Shift (brief invincibility, on a cooldown)
 - Weapons fire automatically — no attack button
 - **Esc** or **P:** pause
 - Touch: drag anywhere on screen (virtual joystick)
 
 ## What's here
 
-- 3 playable characters with distinct stats and starting weapons
-- 6 weapons, each evolving into a stronger form once maxed + paired with the right passive item
-- 6 passive items, procedurally-offered level-up choices
-- Escalating enemy waves, 5 enemy archetypes, 2 scripted bosses
+- **Run structure:** 3 acts, each a short branching sequence of node choices (combat / elite / shop / treasure / rest) ending in an act boss — pick your path each step, Slay-the-Spire style
+- **Pre-run planning:** 3 characters x 4 build-defining relics (each a real tradeoff, not just a buff)
+- **Elemental depth:** 5 damage types (physical/fire/poison/shock/frost) with per-enemy resistances/weaknesses, status effects (burn, poison stacks, shock stun, frost slow), and two build-archetype synergy bonuses (physical focus vs. elemental diversity)
+- **Items:** 6 weapons (each evolving once maxed + paired with the right passive), 7 passives with mastery bonuses at max level, common/rare/legendary tiers
+- **Elites & bosses:** elites roll a random affix (explosive death, damage shield, frost aura), 3 distinct bosses (one per act)
+- **Biome hazards:** static terrain danger zones (poison pools, fire vents) to route around mid-fight
 - Meta-progression shop (persists via `localStorage`) between runs
 - Screen shake, particles, hit-flash, floating damage numbers, procedural WebAudio SFX + ambient music
 
@@ -53,13 +56,15 @@ index.html       shell + all DOM screens (menu, HUD, shop, level-up, end)
 style.css        theming
 src/
   main.js        bootstrap, input, resize, render loop
-  game.js         state machine + orchestration
-  player.js       character defs, Player class
-  enemies.js       enemy AI, spawner, boss patterns
-  enemyData.js      enemy/boss stat tables
-  weapons.js       weapon defs, projectile/effect systems
-  upgrades.js      passive items, level-up choice rolling
-  pickups.js       XP gems / gold, magnet pickup
+  game.js         state machine + orchestration (map/combat/shop/reward nodes)
+  runMap.js        branching run/act/node generation
+  player.js       character + relic defs, Player class, dash
+  enemies.js       enemy AI, spawner, boss patterns, elite affixes
+  enemyData.js      enemy/boss stat tables, biomes, resistances
+  statusEffects.js  burn/poison/shock/frost status effect logic
+  weapons.js       weapon defs, damage types, projectile/effect systems, synergies
+  upgrades.js      passives, item tiers, level-up/shop choice rolling
+  pickups.js       XP gems / Cores, magnet pickup
   particles.js      particle + floating text system
   audio.js         procedural WebAudio SFX/music
   meta.js          localStorage meta-progression + shop

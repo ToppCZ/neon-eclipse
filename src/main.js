@@ -6,7 +6,7 @@ const canvas = document.getElementById('game-canvas');
 const game = new Game(canvas);
 window.__game = game; // debug hook for automated/manual testing in the console
 
-const input = { left: false, right: false, up: false, down: false };
+const input = { left: false, right: false, up: false, down: false, dashPressed: false };
 
 const KEY_MAP = {
   KeyA: 'left', ArrowLeft: 'left',
@@ -20,6 +20,10 @@ window.addEventListener('keydown', (e) => {
   if (dir) { input[dir] = true; e.preventDefault(); }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (game.state === 'playing' || game.state === 'paused') game.togglePause();
+  }
+  if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+    input.dashPressed = true;
+    e.preventDefault();
   }
 });
 
@@ -80,6 +84,7 @@ function loop(now) {
   last = now;
   dt = Math.min(dt, 1 / 20); // clamp to avoid spiral-of-death after a tab switch / stall
   game.update(dt, input);
+  input.dashPressed = false; // edge-triggered: consumed once per keypress, not held
   game.render();
   requestAnimationFrame(loop);
 }

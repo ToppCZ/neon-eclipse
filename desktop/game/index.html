@@ -19,12 +19,13 @@
         <span id="hp-label" class="bar-label">100 / 100</span>
       </div>
       <div id="timer">0:00</div>
-      <div id="gold-counter"><span class="coin">●</span><span id="gold-val">0</span></div>
+      <div id="gold-counter"><span class="coin">◈</span><span id="gold-val">0</span></div>
     </div>
     <div id="xp-wrap" class="bar-wrap thin">
       <div id="xp-bar" class="bar-fill xp"></div>
     </div>
     <div id="level-badge">Lv 1</div>
+    <div id="run-progress" class="hidden"></div>
     <div id="weapon-tray"></div>
   </div>
 
@@ -41,7 +42,7 @@
         <button id="btn-shop" class="btn">Upgrades</button>
       </div>
       <div class="menu-stats" id="menu-stats"></div>
-      <p class="controls-hint">Move: WASD / Arrow Keys &nbsp;·&nbsp; Weapons fire automatically &nbsp;·&nbsp; Esc to pause</p>
+      <p class="controls-hint">Move: WASD / Arrow Keys &nbsp;·&nbsp; Space/Shift to dash &nbsp;·&nbsp; Weapons fire automatically &nbsp;·&nbsp; Esc to pause</p>
     </div>
   </div>
 
@@ -63,11 +64,31 @@
     </div>
   </div>
 
-  <!-- ===== Level-up modal ===== -->
-  <div id="screen-levelup" class="screen hidden">
+  <!-- ===== Generic choice modal (level-up / node reward / treasure / rest) ===== -->
+  <div id="screen-choice" class="screen hidden">
     <div class="menu-card wide">
-      <h2>Level Up!</h2>
-      <div id="levelup-choices" class="choice-list"></div>
+      <h2 id="choice-title">Choose</h2>
+      <div id="choice-list" class="choice-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== Run map (node selection) ===== -->
+  <div id="screen-map" class="screen hidden">
+    <div class="menu-card wide">
+      <h2 id="map-header">Act 1</h2>
+      <div id="map-choices" class="node-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== In-run shop node ===== -->
+  <div id="screen-node-shop" class="screen hidden">
+    <div class="menu-card wide">
+      <h2>Supply Cache <span class="gold-title"><span class="coin">◈</span><span id="node-shop-cores">0</span></span></h2>
+      <div id="node-shop-list" class="shop-list"></div>
+      <div class="menu-buttons" style="flex-direction:row; gap:10px;">
+        <button id="btn-node-shop-reroll" class="btn">Reroll (◈ <span id="node-shop-reroll-cost">15</span>)</button>
+        <button id="btn-node-shop-continue" class="btn btn-primary">Continue</button>
+      </div>
     </div>
   </div>
 

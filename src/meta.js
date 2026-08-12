@@ -13,7 +13,7 @@ function defaultMeta() {
   return {
     gold: 0,
     levels: { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 },
-    stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, totalKills: 0 },
+    stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, bestAct: 0, totalKills: 0, totalNodesCleared: 0 },
   };
 }
 
@@ -64,11 +64,13 @@ export function getMetaBonuses(meta) {
   return bonuses;
 }
 
-export function recordRunResult(meta, { time, level, kills, goldEarned }) {
+export function recordRunResult(meta, { time, level, kills, actReached, nodesCleared, goldEarned }) {
   meta.gold += goldEarned;
   meta.stats.totalRuns += 1;
   meta.stats.bestTime = Math.max(meta.stats.bestTime, time);
   meta.stats.bestLevel = Math.max(meta.stats.bestLevel, level);
+  meta.stats.bestAct = Math.max(meta.stats.bestAct, actReached || 0);
   meta.stats.totalKills += kills;
+  meta.stats.totalNodesCleared += nodesCleared || 0;
   saveMeta(meta);
 }

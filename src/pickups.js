@@ -10,8 +10,8 @@ export class PickupManager {
     this.audio = audio;
     this.pool = new Pool(makeGem, (g, x, y, value, kind) => {
       g.x = x; g.y = y; g.value = value; g.kind = kind;
-      g.color = kind === 'gold' ? '#ffd54a' : (value >= 5 ? '#c98cff' : '#5ee6ff');
-      g.radius = kind === 'gold' ? 6 : (value >= 5 ? 7 : 5);
+      g.color = kind === 'cores' ? '#ffd54a' : (value >= 5 ? '#c98cff' : '#5ee6ff');
+      g.radius = kind === 'cores' ? 6 : (value >= 5 ? 7 : 5);
       g.vx = 0; g.vy = 0; g.attracted = false; g.bob = Math.random() * TAU;
     });
   }
@@ -19,7 +19,7 @@ export class PickupManager {
   reset() { this.pool.clear(); }
 
   spawnXp(x, y, value) { this.pool.spawn(x, y, value, 'xp'); }
-  spawnGold(x, y, value) { this.pool.spawn(x, y, value, 'gold'); }
+  spawnCores(x, y, value) { this.pool.spawn(x, y, value, 'cores'); }
 
   update(dt, player, onCollect) {
     const magnetR2 = player.magnet * player.magnet;
@@ -53,7 +53,7 @@ export class PickupManager {
       ctx.shadowColor = g.color;
       ctx.shadowBlur = 8;
       ctx.fillStyle = g.color;
-      if (g.kind === 'gold') {
+      if (g.kind === 'cores') {
         ctx.beginPath();
         ctx.arc(0, 0, g.radius, 0, TAU);
         ctx.fill();

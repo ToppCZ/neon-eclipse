@@ -412,24 +412,61 @@ const CHARACTERS = {
 function getCharacter(id) { return CHARACTERS[id] || CHARACTERS.vex; }
 function listCharacters() { return Object.values(CHARACTERS); }
 
+// Pre-run picks: a real strategic tradeoff before the run even starts, not
+// just a flat buff. Applied once, directly to the character's base stats.
+const RELICS = {
+  glassCannon: {
+    id: 'glassCannon', name: 'Glass Cannon', glyph: '⚡', color: '#ff5e8a',
+    desc: '+35% damage, -25% max HP',
+    apply(base) { base.baseMight *= 1.35; base.baseMaxHp *= 0.75; },
+  },
+  fortress: {
+    id: 'fortress', name: 'Fortress', glyph: '▣', color: '#ff8a5e',
+    desc: '+30% max HP, +3 armor, -15% move speed',
+    apply(base) { base.baseMaxHp *= 1.3; base.baseArmor += 3; base.baseSpeed *= 0.85; },
+  },
+  berserker: {
+    id: 'berserker', name: 'Berserker', glyph: '⚔', color: '#ffd54a',
+    desc: '+20% attack speed, -10% damage',
+    apply(base) { base.baseCooldown *= 0.8; base.baseMight *= 0.9; },
+  },
+  vampire: {
+    id: 'vampire', name: 'Vampire', glyph: '♥', color: '#7CFC9A',
+    desc: '+1.5 HP/s regen, -20% pickup radius',
+    apply(base) { base.baseRegen += 1.5; base.baseMagnet *= 0.8; },
+  },
+};
+
+function getRelic(id) { return RELICS[id] || null; }
+function listRelics() { return Object.values(RELICS); }
+
+const DASH_COOLDOWN = 2.2;
+const DASH_DURATION = 0.18;
+const DASH_SPEED_MULT = 3.4;
+
 class Player {
-  constructor(character, metaBonuses) {
+  constructor(character, metaBonuses, relic) {
     this.char = character;
+    this.relic = relic || null;
     this.x = 0;
     this.y = 0;
     this.radius = 16;
     this.facing = 0;
 
     const meta = metaBonuses || { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 };
-    this.baseMaxHp = character.baseHp * (1 + meta.hp);
-    this.baseSpeed = character.baseSpeed * (1 + meta.speed);
-    this.baseMight = character.baseMight * (1 + meta.might);
-    this.baseArea = character.baseArea;
-    this.baseCooldown = character.baseCooldown;
-    this.baseMagnet = character.baseMagnet * (1 + meta.magnet);
-    this.baseLuck = character.baseLuck * (1 + meta.luck);
-    this.baseArmor = character.baseArmor + meta.armor;
-    this.baseRegen = character.baseRegen;
+    const base = {
+      baseMaxHp: character.baseHp * (1 + meta.hp),
+      baseSpeed: character.baseSpeed * (1 + meta.speed),
+      baseMight: character.baseMight * (1 + meta.might),
+      baseArea: character.baseArea,
+      baseCooldown: character.baseCooldown,
+      baseMagnet: character.baseMagnet * (1 + meta.magnet),
+      baseLuck: character.baseLuck * (1 + meta.luck),
+      baseArmor: character.baseArmor + meta.armor,
+      baseRegen: character.baseRegen,
+    };
+    if (relic && relic.apply) relic.apply(base);
+    Object.assign(this, base);
 
     this.passives = new Map(); // id -> level
 
@@ -450,7 +487,7 @@ class Player {
     this.level = 1;
     this.xp = 0;
     this.xpToNext = 5;
-    this.gold = 0;
+    this.cores = 0; // in-run currency, spent at shop nodes; resets each run
 
     this.invulnTimer = 0;
     this.hurtFlash = 0;
@@ -460,6 +497,13 @@ class Player {
     this.kills = 0;
     this.moveAngle = 0;
     this.moving = false;
+
+    this.auraSlowMult = 1; // set externally each frame by a nearby frost-aura elite, if any
+
+    this.dashCooldownTimer = 0;
+    this.dashTimeLeft = 0;
+    this.dashAngle = 0;
+    this.dashMaxCooldown = DASH_COOLDOWN;
   }
 
   xpCurveFor(level) {
@@ -507,6 +551,7 @@ class Player {
   update(dt, input, worldHalf) {
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
+    if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
 
     let mx = 0, my = 0;
     if (input.left) mx -= 1;
@@ -514,12 +559,26 @@ class Player {
     if (input.up) my -= 1;
     if (input.down) my += 1;
     this.moving = mx !== 0 || my !== 0;
-    if (this.moving) {
+    if (this.moving) this.facing = Math.atan2(my, mx);
+
+    if (input.dashPressed && this.dashCooldownTimer <= 0 && this.dashTimeLeft <= 0) {
+      this.dashTimeLeft = DASH_DURATION;
+      this.dashCooldownTimer = DASH_COOLDOWN;
+      this.dashAngle = this.moving ? Math.atan2(my, mx) : this.facing;
+      this.invulnTimer = Math.max(this.invulnTimer, DASH_DURATION + 0.05);
+    }
+
+    if (this.dashTimeLeft > 0) {
+      this.dashTimeLeft -= dt;
+      const dashSpeed = this.speed * DASH_SPEED_MULT;
+      this.x += Math.cos(this.dashAngle) * dashSpeed * dt;
+      this.y += Math.sin(this.dashAngle) * dashSpeed * dt;
+    } else if (this.moving) {
       const len = Math.hypot(mx, my) || 1;
       mx /= len; my /= len;
-      this.x += mx * this.speed * dt;
-      this.y += my * this.speed * dt;
-      this.facing = Math.atan2(my, mx);
+      const effSpeed = this.speed * this.auraSlowMult;
+      this.x += mx * effSpeed * dt;
+      this.y += my * effSpeed * dt;
     }
     this.x = clamp(this.x, -worldHalf, worldHalf);
     this.y = clamp(this.y, -worldHalf, worldHalf);
@@ -562,34 +621,42 @@ class Player {
 }
 
 // ---- enemyData.js ----
-// Enemy archetypes. `hp`/`damage`/`speed` are base values at t=0; the spawner
-// scales them up over the run's duration. `behavior` selects an update
-// function in enemies.js.
+// Enemy archetypes. `hp`/`damage`/`speed` are base values at act 1, node-elapsed 0;
+// the spawner scales them up over a node's duration and by act tier. `behavior`
+// selects an update function in enemies.js. `minAct` gates which acts a type can
+// appear in — availability is otherwise driven by the current biome's `enemyPool`.
+// `resistances` multiply incoming damage by weapon damageType (>1 = weak to it,
+// <1 = resists it); an omitted type defaults to 1 (neutral).
 const ENEMY_TYPES = {
   crawler: {
     id: 'crawler', name: 'Crawler', behavior: 'chase',
     hp: 14, speed: 95, damage: 8, radius: 12, xp: 1, color: '#7CFC9A', glow: '#2f7a45',
-    unlockAt: 0, weight: 10,
+    minAct: 1, weight: 10,
+    resistances: { fire: 1.15, frost: 0.9 },
   },
   sprinter: {
     id: 'sprinter', name: 'Sprinter', behavior: 'chase',
     hp: 9, speed: 190, damage: 6, radius: 9, xp: 1, color: '#FFE066', glow: '#8a7a1f',
-    unlockAt: 60, weight: 6,
-  },
-  brute: {
-    id: 'brute', name: 'Brute', behavior: 'chase',
-    hp: 70, speed: 65, damage: 18, radius: 20, xp: 4, color: '#FF6B6B', glow: '#7a2020',
-    unlockAt: 150, weight: 4,
-  },
-  spitter: {
-    id: 'spitter', name: 'Spitter', behavior: 'ranged',
-    hp: 20, speed: 70, damage: 10, radius: 11, xp: 2, color: '#c98cff', glow: '#5a2f7a',
-    unlockAt: 240, weight: 5, range: 320, fireRate: 1.6, projSpeed: 190,
+    minAct: 1, weight: 6,
+    resistances: { shock: 1.25, frost: 0.85 },
   },
   swarmling: {
     id: 'swarmling', name: 'Swarmling', behavior: 'chase',
     hp: 4, speed: 130, damage: 4, radius: 6, xp: 1, color: '#5ee6ff', glow: '#1f5a6b',
-    unlockAt: 90, weight: 8, spawnsInGroups: true,
+    minAct: 1, weight: 8, spawnsInGroups: true,
+    resistances: { fire: 1.3, poison: 0.75 },
+  },
+  spitter: {
+    id: 'spitter', name: 'Spitter', behavior: 'ranged',
+    hp: 20, speed: 70, damage: 10, radius: 11, xp: 2, color: '#c98cff', glow: '#5a2f7a',
+    minAct: 2, weight: 5, range: 320, fireRate: 1.6, projSpeed: 190,
+    resistances: { fire: 0.85, poison: 1.25 },
+  },
+  brute: {
+    id: 'brute', name: 'Brute', behavior: 'chase',
+    hp: 70, speed: 65, damage: 18, radius: 20, xp: 4, color: '#FF6B6B', glow: '#7a2020',
+    minAct: 2, weight: 4,
+    resistances: { poison: 0.8, shock: 0.85, frost: 1.2 },
   },
 };
 
@@ -598,31 +665,217 @@ const BOSS_TYPES = {
     id: 'warden', name: 'The Warden', behavior: 'boss_warden',
     hp: 900, speed: 78, damage: 14, radius: 34, xp: 40, color: '#ff5e8a', glow: '#7a1f3a',
     slamRange: 90, slamDamage: 28, slamCooldown: 2.6, summonCooldown: 7,
+    resistances: { poison: 0.85, shock: 0.9, frost: 1.1 },
+  },
+  swarmMother: {
+    id: 'swarmMother', name: 'The Swarm Mother', behavior: 'boss_swarmmother',
+    hp: 1500, speed: 72, damage: 12, radius: 36, xp: 70, color: '#7CFC9A', glow: '#1f5a2f',
+    pulseRadius: 130, pulseDamage: 20, pulseCooldown: 3.2, summonCooldown: 5,
+    resistances: { fire: 1.25, poison: 0.6 },
   },
   eclipse: {
     id: 'eclipse', name: 'The Eclipse', behavior: 'boss_eclipse',
     hp: 2600, speed: 90, damage: 16, radius: 42, xp: 120, color: '#ffb14a', glow: '#7a4a1f',
     burstCooldown: 3.2, burstCount: 16, dashCooldown: 5,
+    resistances: { fire: 0.95, poison: 0.95, shock: 1.15, frost: 0.95 },
   },
 };
 
-// Time (seconds) -> boss id. Runs cap difficulty escalation shortly after the last one.
-const BOSS_SCHEDULE = [
-  { time: 180, id: 'warden' },
-  { time: 420, id: 'eclipse' },
+// Each act plays out in one biome: it picks which enemy types can spawn, the
+// act's boss, and the arena's color palette.
+const BIOMES = [
+  {
+    id: 'neonSlums', name: 'Neon Slums', act: 1,
+    enemyPool: ['crawler', 'sprinter', 'swarmling'],
+    boss: 'warden', hazardType: null,
+    bg: '#05060f', grid: 'rgba(94, 230, 255, 0.06)', accent: '#5ee6ff',
+  },
+  {
+    id: 'toxicWastes', name: 'Toxic Wastes', act: 2,
+    enemyPool: ['sprinter', 'swarmling', 'spitter', 'brute'],
+    boss: 'swarmMother', hazardType: 'poison',
+    bg: '#050f08', grid: 'rgba(124, 252, 154, 0.07)', accent: '#7CFC9A',
+  },
+  {
+    id: 'eclipseCore', name: 'Eclipse Core', act: 3,
+    enemyPool: ['crawler', 'brute', 'spitter', 'swarmling'],
+    boss: 'eclipse', hazardType: 'fire',
+    bg: '#0f0605', grid: 'rgba(255, 138, 94, 0.07)', accent: '#ffb14a',
+  },
 ];
 
-const RUN_LENGTH = 600; // 10 minutes to a clean "Victory" screen
+function biomeForAct(actNumber) {
+  return BIOMES[actNumber - 1] || BIOMES[BIOMES.length - 1];
+}
+
+// ---- runMap.js ----
+// A run is 3 acts. Each act is a sequence of steps the player resolves in order;
+// every non-boss step offers 3 node choices (Slay the Spire-style "pick what's
+// next", without needing a full branching graph renderer). The final step of
+// every act is always the act's boss, forced.
+const STEPS_PER_ACT = 4; // + 1 forced boss step
+
+const NODE_TYPE_WEIGHTS = [
+  { weight: 45, value: 'combat' },
+  { weight: 15, value: 'elite' },
+  { weight: 15, value: 'shop' },
+  { weight: 15, value: 'treasure' },
+  { weight: 10, value: 'rest' },
+];
+
+const NODE_LABELS = {
+  combat: ['Ambush', 'Skirmish', 'Incursion', 'Breach', 'Hunting Ground'],
+  elite: ['Elite Sighting', "Champion's Den", 'Marked Target'],
+  shop: ['Black Market', 'Supply Cache', "Vendor's Stall"],
+  treasure: ['Vault', 'Cache', 'Stash'],
+  rest: ['Safehouse', 'Sanctuary', 'Respite'],
+  boss: ['Act Boss'],
+};
+
+function rollNodeType(excludeType) {
+  let type = weightedPick(NODE_TYPE_WEIGHTS);
+  if (type === excludeType) type = weightedPick(NODE_TYPE_WEIGHTS);
+  return type;
+}
+
+function makeNode(type, biome, stepIndex) {
+  const labels = NODE_LABELS[type];
+  return {
+    id: `${biome.id}-${stepIndex}-${type}-${Math.floor(rng() * 1e6)}`,
+    type,
+    biome,
+    label: labels[randInt(0, labels.length - 1)],
+  };
+}
+
+function generateAct(actNumber) {
+  const biome = biomeForAct(actNumber);
+  const steps = [];
+  let lastType = null;
+  for (let i = 0; i < STEPS_PER_ACT; i++) {
+    const choices = [];
+    const usedTypes = new Set();
+    for (let c = 0; c < 3; c++) {
+      let type = rollNodeType(i === 0 ? null : lastType);
+      let attempts = 0;
+      while (usedTypes.has(type) && attempts < 4) { type = rollNodeType(null); attempts++; }
+      usedTypes.add(type);
+      choices.push(makeNode(type, biome, i));
+    }
+    lastType = choices[0].type;
+    steps.push({ index: i, choices, forced: null });
+  }
+  // Final forced boss step.
+  steps.push({ index: STEPS_PER_ACT, choices: [makeNode('boss', biome, STEPS_PER_ACT)], forced: 'boss' });
+  return { actNumber, biome, steps };
+}
+
+function generateRun() {
+  return {
+    actIndex: 0,
+    stepIndex: 0,
+    acts: [generateAct(1), generateAct(2), generateAct(3)],
+    nodesCleared: 0,
+  };
+}
+
+function currentAct(run) { return run.acts[run.actIndex]; }
+function currentStep(run) { return currentAct(run).steps[run.stepIndex]; }
+function isLastAct(run) { return run.actIndex >= run.acts.length - 1; }
+function isLastStepOfAct(run) { return run.stepIndex >= currentAct(run).steps.length - 1; }
+function totalActs(run) { return run.acts.length; }
+
+// ---- statusEffects.js ----
+// Status effects live as plain fields directly on each (pooled) enemy object
+// rather than as separate pooled entities — enemies already are long-lived
+// pooled objects, so this avoids a second bookkeeping layer for what's really
+// just a handful of timers per enemy.
+
+function applyBurn(e, dps, duration) {
+  e.burnTime = Math.max(e.burnTime || 0, duration);
+  e.burnDps = Math.max(e.burnDps || 0, dps);
+}
+
+function applyPoison(e, dpsPerStack, duration) {
+  e.poisonStacks = Math.min(5, (e.poisonStacks || 0) + 1);
+  e.poisonTime = Math.max(e.poisonTime || 0, duration);
+  e.poisonDpsPerStack = dpsPerStack;
+}
+
+function applyShock(e, stunDuration) {
+  e.stunTime = Math.max(e.stunTime || 0, stunDuration);
+}
+
+function applyFrost(e, slowPerStack, duration) {
+  e.frostStacks = Math.min(3, (e.frostStacks || 0) + 1);
+  e.frostTime = Math.max(e.frostTime || 0, duration);
+  e.frostSlowPerStack = slowPerStack;
+}
+
+function clearStatuses(e) {
+  e.burnTime = 0; e.burnDps = 0;
+  e.poisonTime = 0; e.poisonStacks = 0; e.poisonDpsPerStack = 0;
+  e.stunTime = 0;
+  e.frostTime = 0; e.frostStacks = 0; e.frostSlowPerStack = 0;
+  e._burnTick = 0; e._poisonTick = 0;
+}
+
+// Ticks DoTs, decays timers, and reports back this frame's movement
+// multiplier (frost) and whether the enemy is stunned (shock) — both of
+// which the caller applies in its own movement/behavior code.
+function updateStatuses(e, dt) {
+  let speedMult = 1;
+  let stunned = false;
+
+  if (e.burnTime > 0) {
+    e.burnTime -= dt;
+    e._burnTick = (e._burnTick ?? 0) - dt;
+    if (e._burnTick <= 0) { e._burnTick += 0.5; e.hp -= e.burnDps * 0.5; e.hurtFlash = Math.max(e.hurtFlash, 0.06); }
+    if (e.burnTime <= 0) { e.burnTime = 0; e.burnDps = 0; }
+  }
+  if (e.poisonTime > 0) {
+    e.poisonTime -= dt;
+    e._poisonTick = (e._poisonTick ?? 0) - dt;
+    if (e._poisonTick <= 0) { e._poisonTick += 0.5; e.hp -= e.poisonDpsPerStack * e.poisonStacks * 0.5; e.hurtFlash = Math.max(e.hurtFlash, 0.06); }
+    if (e.poisonTime <= 0) { e.poisonTime = 0; e.poisonStacks = 0; }
+  }
+  if (e.stunTime > 0) {
+    e.stunTime -= dt;
+    stunned = true;
+    if (e.stunTime <= 0) e.stunTime = 0;
+  }
+  if (e.frostTime > 0) {
+    e.frostTime -= dt;
+    speedMult = Math.max(0.25, 1 - 0.2 * e.frostStacks);
+    if (e.frostTime <= 0) { e.frostTime = 0; e.frostStacks = 0; }
+  }
+
+  return { speedMult, stunned };
+}
+
+// Render-time glow override so the player can see what's afflicting an enemy.
+function statusGlowColor(e) {
+  if (e.stunTime > 0) return '#ffe066';
+  if (e.frostTime > 0) return '#5ee6ff';
+  if (e.poisonTime > 0) return '#7CFC9A';
+  if (e.burnTime > 0) return '#ff8a5e';
+  return null;
+}
 
 // ---- enemies.js ----
 function makeEnemy() {
   return {
     x: 0, y: 0, vx: 0, vy: 0, hp: 1, maxHp: 1, speed: 0, damage: 0, radius: 10,
     xp: 1, color: '#fff', glow: '#000', type: null, behavior: 'chase', isBoss: false,
-    hitCooldown: 0, hurtFlash: 0, t: 0, phaseTimer: 0, phase: 0, __alive: true,
-    knockX: 0, knockY: 0,
+    isElite: false, hitCooldown: 0, hurtFlash: 0, t: 0, phaseTimer: 0, phase: 0, __alive: true,
+    knockX: 0, knockY: 0, _statusSpeedMult: 1,
+    burnTime: 0, burnDps: 0, poisonTime: 0, poisonStacks: 0, poisonDpsPerStack: 0,
+    stunTime: 0, frostTime: 0, frostStacks: 0, frostSlowPerStack: 0,
+    affix: null, shieldHp: 0, shieldMaxHp: 0,
   };
 }
+
+const ELITE_AFFIXES = ['explosive', 'shielded', 'frozenAura'];
 
 function makeEnemyShot() {
   return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, radius: 6, life: 4, color: '#c98cff', __alive: true };
@@ -636,6 +889,7 @@ class EnemyManager {
       e.type = type;
       e.behavior = type.behavior;
       e.isBoss = !!type.isBoss;
+      e.isElite = false;
       e.x = x; e.y = y; e.vx = 0; e.vy = 0;
       e.maxHp = Math.round(type.hp * hpMult);
       e.hp = e.maxHp;
@@ -651,39 +905,47 @@ class EnemyManager {
       e.phaseTimer = 0;
       e.phase = 0;
       e.knockX = 0; e.knockY = 0;
+      e._statusSpeedMult = 1;
+      e.affix = null; e.shieldHp = 0; e.shieldMaxHp = 0;
+      clearStatuses(e);
     });
     this.shots = new Pool(makeEnemyShot, (s, x, y, vx, vy, damage, color) => {
       Object.assign(s, { x, y, vx, vy, damage, life: 4, color });
     });
 
     this.spawnTimer = 0;
-    this.bossSpawned = new Set();
     this.activeBoss = null;
+    this.activeElite = null;
     this.onDeath = null; // (enemy) => void
     this.onPlayerHit = null; // (amount, x, y) => void
-    this.onBossSpawned = null; // (name) => void
   }
 
   reset() {
     this.pool.clear();
     this.shots.clear();
     this.spawnTimer = 0;
-    this.bossSpawned.clear();
     this.activeBoss = null;
+    this.activeElite = null;
   }
 
-  difficultyScale(elapsed) {
-    const t = elapsed / 60;
+  // t maxes out around 2-2.5 for a node's short duration; the act multiplier
+  // (much larger swings) is what actually drives the run's difficulty curve.
+  difficultyScale(nodeElapsed, actNumber) {
+    const t = nodeElapsed / 60;
+    const actHp = 1 + (actNumber - 1) * 0.6;
+    const actDmg = 1 + (actNumber - 1) * 0.45;
+    const actSpeed = 1 + (actNumber - 1) * 0.12;
+    const actSpawn = 1 + (actNumber - 1) * 0.3;
     return {
-      hp: 1 + t * 0.22 + Math.pow(t, 1.5) * 0.01,
-      dmg: 1 + t * 0.08,
-      speed: 1 + Math.min(0.35, t * 0.03),
-      spawnRate: 1 + t * 0.26,
+      hp: (1 + t * 0.35) * actHp,
+      dmg: (1 + t * 0.12) * actDmg,
+      speed: (1 + Math.min(0.25, t * 0.06)) * actSpeed,
+      spawnRate: (1 + t * 0.4) * actSpawn,
     };
   }
 
-  availableTypes(elapsed) {
-    return Object.values(ENEMY_TYPES).filter(t => elapsed >= t.unlockAt);
+  availableTypes(biome) {
+    return biome.enemyPool.map(id => ENEMY_TYPES[id]).filter(Boolean);
   }
 
   spawnPointAround(px, py, worldHalf) {
@@ -696,59 +958,66 @@ class EnemyManager {
     return { x, y };
   }
 
-  trySpawnBoss(elapsed) {
-    for (const sched of BOSS_SCHEDULE) {
-      if (elapsed >= sched.time && !this.bossSpawned.has(sched.id)) {
-        this.bossSpawned.add(sched.id);
-        return sched.id;
-      }
-    }
-    return null;
-  }
-
-  spawnBoss(id, player, worldHalf) {
-    const type = { ...BOSS_TYPES[id], isBoss: true };
+  spawnBoss(bossId, player, worldHalf) {
+    const type = { ...BOSS_TYPES[bossId], isBoss: true };
     const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
     const e = this.pool.spawn(type, x, y, 1, 1, 1);
-    e.bossId = id;
+    e.bossId = bossId;
     this.activeBoss = e;
-    if (this.onBossSpawned) this.onBossSpawned(type.name);
     if (this.audio) this.audio.bossRoar();
     return e;
   }
 
-  update(dt, elapsed, player, worldHalf, difficultyOverride) {
-    const scale = difficultyOverride || this.difficultyScale(elapsed);
+  spawnElite(biome, player, worldHalf, actNumber) {
+    const types = this.availableTypes(biome);
+    const type = types.reduce((a, b) => (b.hp > a.hp ? b : a), types[0]);
+    const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
+    const actHp = 1 + (actNumber - 1) * 0.6;
+    const actDmg = 1 + (actNumber - 1) * 0.45;
+    const e = this.pool.spawn(type, x, y, 7 * actHp, 1.6 * actDmg, 1.05);
+    e.isElite = true;
+    e.radius *= 1.4;
+    e.affix = ELITE_AFFIXES[Math.floor(randRange(0, ELITE_AFFIXES.length))];
+    if (e.affix === 'shielded') {
+      e.shieldMaxHp = e.maxHp * 0.5;
+      e.shieldHp = e.shieldMaxHp;
+    }
+    this.activeElite = e;
+    if (this.audio) this.audio.bossRoar();
+    return e;
+  }
 
-    // Boss check
-    const bossId = this.trySpawnBoss(elapsed);
-    if (bossId) this.spawnBoss(bossId, player, worldHalf);
+  update(dt, nodeElapsed, player, worldHalf, biome, actNumber, spawningEnabled = true) {
+    const scale = this.difficultyScale(nodeElapsed, actNumber);
 
-    // Regular spawn director
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0 && this.pool.active.length < 320) {
-      this.spawnTimer = clamp(0.85 / scale.spawnRate, 0.045, 0.85);
-      const types = this.availableTypes(elapsed);
-      const weighted = types.map(t => ({ weight: t.weight, value: t }));
-      const type = weightedPick(weighted);
-      const groupSize = type.spawnsInGroups ? Math.floor(randRange(3, 6)) : 1;
-      const origin = this.spawnPointAround(player.x, player.y, worldHalf);
-      for (let i = 0; i < groupSize; i++) {
-        const jx = origin.x + randRange(-40, 40);
-        const jy = origin.y + randRange(-40, 40);
-        this.pool.spawn(type, jx, jy, scale.hp, scale.dmg, scale.speed);
+    if (spawningEnabled) {
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0 && this.pool.active.length < 320) {
+        this.spawnTimer = clamp(0.85 / scale.spawnRate, 0.045, 0.85);
+        const types = this.availableTypes(biome);
+        const weighted = types.map(t => ({ weight: t.weight, value: t }));
+        const type = weightedPick(weighted);
+        const groupSize = type.spawnsInGroups ? Math.floor(randRange(3, 6)) : 1;
+        const origin = this.spawnPointAround(player.x, player.y, worldHalf);
+        for (let i = 0; i < groupSize; i++) {
+          const jx = origin.x + randRange(-40, 40);
+          const jy = origin.y + randRange(-40, 40);
+          this.pool.spawn(type, jx, jy, scale.hp, scale.dmg, scale.speed);
+        }
       }
     }
 
-    // Update enemies
     this.pool.update((e) => {
       e.t += dt;
       if (e.hurtFlash > 0) e.hurtFlash -= dt;
       if (e.hitCooldown > 0) e.hitCooldown -= dt;
 
-      this.runBehavior(e, dt, player, worldHalf);
+      const status = updateStatuses(e, dt);
+      e._statusSpeedMult = status.speedMult;
+      if (!status.stunned) {
+        this.runBehavior(e, dt, player, worldHalf);
+      }
 
-      // apply knockback decay
       if (e.knockX || e.knockY) {
         e.x += e.knockX * dt;
         e.y += e.knockY * dt;
@@ -760,7 +1029,6 @@ class EnemyManager {
       e.x = clamp(e.x, -worldHalf, worldHalf);
       e.y = clamp(e.y, -worldHalf, worldHalf);
 
-      // contact damage with player
       const r = e.radius + player.radius;
       if (e.hitCooldown <= 0 && dist2(e.x, e.y, player.x, player.y) <= r * r) {
         e.hitCooldown = 0.55;
@@ -769,13 +1037,13 @@ class EnemyManager {
 
       if (e.hp <= 0) {
         if (e.isBoss) this.activeBoss = null;
+        if (e.isElite) this.activeElite = null;
         if (this.onDeath) this.onDeath(e);
         return false;
       }
       return true;
     });
 
-    // Update enemy projectiles
     this.shots.update((s) => {
       s.life -= dt;
       if (s.life <= 0) return false;
@@ -795,6 +1063,7 @@ class EnemyManager {
       case 'chase': return this.behaviorChase(e, dt, player);
       case 'ranged': return this.behaviorRanged(e, dt, player);
       case 'boss_warden': return this.behaviorWarden(e, dt, player);
+      case 'boss_swarmmother': return this.behaviorSwarmMother(e, dt, player);
       case 'boss_eclipse': return this.behaviorEclipse(e, dt, player, worldHalf);
       default: return this.behaviorChase(e, dt, player);
     }
@@ -802,8 +1071,9 @@ class EnemyManager {
 
   moveToward(e, dt, tx, ty, speedMult = 1) {
     const a = angleTo(e.x, e.y, tx, ty);
-    e.x += Math.cos(a) * e.speed * speedMult * dt;
-    e.y += Math.sin(a) * e.speed * speedMult * dt;
+    const mult = speedMult * (e._statusSpeedMult ?? 1);
+    e.x += Math.cos(a) * e.speed * mult * dt;
+    e.y += Math.sin(a) * e.speed * mult * dt;
     return a;
   }
 
@@ -853,6 +1123,29 @@ class EnemyManager {
     }
   }
 
+  behaviorSwarmMother(e, dt, player) {
+    const d = dist(e.x, e.y, player.x, player.y);
+    this.moveToward(e, dt, player.x, player.y, 0.55);
+    e.pulseTimer = (e.pulseTimer ?? e.type.pulseCooldown) - dt;
+    e.summonTimer = (e.summonTimer ?? 2) - dt;
+    if (e.pulseTimer <= 0) {
+      e.pulseTimer = e.type.pulseCooldown || 3.2;
+      e.pulsing = 0.3;
+      if (d <= (e.type.pulseRadius || 130) && this.onPlayerHit) {
+        this.onPlayerHit(e.type.pulseDamage || 20, player.x, player.y);
+      }
+    }
+    if (e.pulsing > 0) e.pulsing -= dt;
+    if (e.summonTimer <= 0) {
+      e.summonTimer = e.type.summonCooldown || 5;
+      for (let i = 0; i < 4; i++) {
+        const a = randRange(0, TAU);
+        const sx = e.x + Math.cos(a) * 70, sy = e.y + Math.sin(a) * 70;
+        this.pool.spawn(ENEMY_TYPES.swarmling, sx, sy, 1 + (e.t / 60), 1, 1);
+      }
+    }
+  }
+
   behaviorEclipse(e, dt, player, worldHalf) {
     e.burstTimer = (e.burstTimer ?? e.type.burstCooldown) - dt;
     e.dashTimer = (e.dashTimer ?? e.type.dashCooldown) - dt;
@@ -878,14 +1171,31 @@ class EnemyManager {
     }
   }
 
-  // Called by weapon system when a projectile hits an enemy.
-  damageEnemy(e, amount, knockAngle, knockForce = 0) {
-    e.hp -= amount;
+  // Called by weapon system when a projectile hits an enemy. Returns the
+  // actual damage applied (after resistance) so callers can show accurate
+  // damage-number popups.
+  damageEnemy(e, amount, knockAngle, knockForce = 0, damageType = 'physical') {
+    const resist = (e.type && e.type.resistances && e.type.resistances[damageType]) || 1;
+    const finalAmount = amount * resist;
+    let remaining = finalAmount;
+    if (e.shieldHp > 0) {
+      const absorbed = Math.min(e.shieldHp, remaining);
+      e.shieldHp -= absorbed;
+      remaining -= absorbed;
+    }
+    e.hp -= remaining;
     e.hurtFlash = 0.12;
     if (knockForce && !e.isBoss) {
       e.knockX += Math.cos(knockAngle) * knockForce;
       e.knockY += Math.sin(knockAngle) * knockForce;
     }
+    switch (damageType) {
+      case 'fire': applyBurn(e, finalAmount * 0.25, 3); break;
+      case 'poison': applyPoison(e, finalAmount * 0.18, 4); break;
+      case 'shock': applyShock(e, 0.35); break;
+      case 'frost': applyFrost(e, 0.2, 2.2); break;
+    }
+    return finalAmount;
   }
 
   queryNearby(x, y, radius, fn) {
@@ -907,25 +1217,53 @@ class EnemyManager {
   render(ctx, camX, camY) {
     for (const e of this.pool.active) {
       const sx = e.x - camX, sy = e.y - camY;
+      const statusGlow = statusGlowColor(e);
       ctx.save();
       ctx.translate(sx, sy);
-      ctx.shadowColor = e.glow;
-      ctx.shadowBlur = e.isBoss ? 22 : 10;
+      ctx.shadowColor = statusGlow || e.glow;
+      ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : e.color;
       ctx.beginPath();
-      const spikes = e.isBoss ? 10 : 5;
+      const spikes = e.isBoss ? 10 : (e.isElite ? 7 : 5);
       drawSpikyBlob(ctx, e.radius, spikes, e.t);
       ctx.fill();
+      if (statusGlow) {
+        ctx.strokeStyle = statusGlow;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 3, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (e.isElite) {
+        ctx.strokeStyle = '#ffd54a';
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius + 6, 0, TAU);
+        ctx.stroke();
+      }
       ctx.restore();
 
-      // HP bar for bosses / tough enemies
-      if (e.isBoss || e.maxHp > 30) {
-        const w = e.isBoss ? 70 : 26;
+      if (e.isBoss || e.isElite || e.maxHp > 30) {
+        const w = e.isBoss ? 70 : (e.isElite ? 50 : 26);
         const pct = clamp(e.hp / e.maxHp, 0, 1);
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(sx - w / 2, sy - e.radius - 12, w, 5);
-        ctx.fillStyle = e.isBoss ? '#ff5e8a' : '#ff6b6b';
+        ctx.fillStyle = e.isBoss ? '#ff5e8a' : (e.isElite ? '#ffd54a' : '#ff6b6b');
         ctx.fillRect(sx - w / 2, sy - e.radius - 12, w * pct, 5);
+        if (e.shieldMaxHp > 0) {
+          const spct = clamp(e.shieldHp / e.shieldMaxHp, 0, 1);
+          ctx.fillStyle = 'rgba(94, 230, 255, 0.85)';
+          ctx.fillRect(sx - w / 2, sy - e.radius - 18, w * spct, 3);
+        }
+      }
+      if (e.isElite && e.affix) {
+        ctx.fillStyle = '#ffd54a';
+        ctx.font = '600 10px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(affixLabel(e.affix), sx, sy - e.radius - 22);
       }
     }
 
@@ -942,6 +1280,9 @@ class EnemyManager {
     ctx.shadowBlur = 0;
   }
 }
+
+const AFFIX_LABELS = { explosive: 'EXPLOSIVE', shielded: 'SHIELDED', frozenAura: 'FROST AURA' };
+function affixLabel(affix) { return AFFIX_LABELS[affix] || affix; }
 
 function drawSpikyBlob(ctx, radius, spikes, t) {
   ctx.beginPath();
@@ -961,7 +1302,7 @@ function drawSpikyBlob(ctx, radius, spikes, t) {
 // `evolvesInto` + `evolutionRequires` drive the evolution check.
 const WEAPONS = {
   shardCannon: {
-    id: 'shardCannon', name: 'Shard Cannon', maxLevel: 8,
+    id: 'shardCannon', name: 'Shard Cannon', maxLevel: 8, damageType: 'physical',
     desc: 'Fires a piercing shard at the nearest foe.',
     evolvedName: 'Prism Cannon', evolutionRequires: 'might',
     getStats(level, player) {
@@ -976,7 +1317,7 @@ const WEAPONS = {
     },
   },
   pulseBlade: {
-    id: 'pulseBlade', name: 'Pulse Blade', maxLevel: 8,
+    id: 'pulseBlade', name: 'Pulse Blade', maxLevel: 8, damageType: 'physical',
     desc: 'Sweeps a damaging arc in front of you.',
     evolvedName: 'Ring Blade', evolutionRequires: 'vitality',
     getStats(level, player) {
@@ -989,8 +1330,8 @@ const WEAPONS = {
     },
   },
   orbitDrones: {
-    id: 'orbitDrones', name: 'Orbit Drones', maxLevel: 8,
-    desc: 'Orbiting drones that shred anything they touch.',
+    id: 'orbitDrones', name: 'Orbit Drones', maxLevel: 8, damageType: 'frost',
+    desc: 'Orbiting drones that shred and chill anything they touch.',
     evolvedName: 'Halo Storm', evolutionRequires: 'amulet',
     getStats(level, player) {
       return {
@@ -1003,8 +1344,8 @@ const WEAPONS = {
     },
   },
   novaBurst: {
-    id: 'novaBurst', name: 'Nova Burst', maxLevel: 8,
-    desc: 'Periodic shockwave around you.',
+    id: 'novaBurst', name: 'Nova Burst', maxLevel: 8, damageType: 'fire',
+    desc: 'Periodic fiery shockwave around you.',
     evolvedName: 'Supernova', evolutionRequires: 'haste',
     getStats(level, player) {
       return {
@@ -1015,8 +1356,8 @@ const WEAPONS = {
     },
   },
   homingMissile: {
-    id: 'homingMissile', name: 'Homing Missile', maxLevel: 8,
-    desc: 'Slow but relentless tracking missiles.',
+    id: 'homingMissile', name: 'Homing Missile', maxLevel: 8, damageType: 'poison',
+    desc: 'Slow but relentless corrosive tracking missiles.',
     evolvedName: 'Swarm Missiles', evolutionRequires: 'magnet',
     getStats(level, player) {
       return {
@@ -1030,7 +1371,7 @@ const WEAPONS = {
     },
   },
   chainLightning: {
-    id: 'chainLightning', name: 'Chain Lightning', maxLevel: 8,
+    id: 'chainLightning', name: 'Chain Lightning', maxLevel: 8, damageType: 'shock',
     desc: 'Arcs between nearby enemies.',
     evolvedName: 'Storm Chain', evolutionRequires: 'fortune',
     getStats(level, player) {
@@ -1045,11 +1386,11 @@ const WEAPONS = {
 };
 
 function makeBullet() {
-  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0 };
+  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, damageType: 'physical', pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0 };
 }
 
 function makeEffect() {
-  return { kind: 'arc', x: 0, y: 0, angle: 0, arc: 0, range: 0, life: 0.15, maxLife: 0.15, damage: 0, color: '#fff', hitSet: null, radius: 0, growTo: 0, __alive: true, points: null };
+  return { kind: 'arc', x: 0, y: 0, angle: 0, arc: 0, range: 0, life: 0.15, maxLife: 0.15, damage: 0, damageType: 'physical', color: '#fff', hitSet: null, radius: 0, growTo: 0, __alive: true, points: null };
 }
 
 class WeaponSystem {
@@ -1061,6 +1402,7 @@ class WeaponSystem {
     this.bullets = new Pool(makeBullet, (b, opts) => {
       Object.assign(b, {
         x: opts.x, y: opts.y, vx: opts.vx, vy: opts.vy, damage: opts.damage,
+        damageType: opts.damageType ?? 'physical',
         pierceLeft: opts.pierce ?? 0, radius: opts.radius ?? 6, life: opts.life ?? 3,
         color: opts.color ?? '#5ee6ff', kind: opts.kind ?? 'bullet', evolvedSplit: !!opts.evolvedSplit,
         splash: opts.splash ?? 0, targetRef: opts.targetRef ?? null, turnRate: opts.turnRate ?? 0,
@@ -1073,12 +1415,34 @@ class WeaponSystem {
       Object.assign(e, {
         kind: opts.kind, x: opts.x, y: opts.y, angle: opts.angle ?? 0, arc: opts.arc ?? 0,
         range: opts.range ?? 0, life: opts.life ?? 0.15, maxLife: opts.life ?? 0.15,
-        damage: opts.damage ?? 0, color: opts.color ?? '#fff', radius: opts.radius ?? 0,
+        damage: opts.damage ?? 0, damageType: opts.damageType ?? 'physical',
+        color: opts.color ?? '#fff', radius: opts.radius ?? 0,
         growTo: opts.growTo ?? 0, points: opts.points ?? null,
       });
       e.hitSet = e.hitSet || new Set();
       e.hitSet.clear();
     });
+
+    // Recomputed once per update() tick — see computeSynergy().
+    this.synergy = { physical: 1, fire: 1, poison: 1, shock: 1, frost: 1, elementCount: 0 };
+  }
+
+  // Two build archetypes: "Physical Focus" (own both physical weapons) and
+  // "Elemental Diversity" (own weapons across distinct non-physical types).
+  // Both are passive bonuses that reward a real strategic weapon-picking
+  // choice rather than just picking whatever's offered.
+  computeSynergy() {
+    const elements = new Set();
+    let hasShard = false, hasPulse = false;
+    for (const slot of this.slots) {
+      const def = WEAPONS[slot.id];
+      if (def.damageType && def.damageType !== 'physical') elements.add(def.damageType);
+      if (slot.id === 'shardCannon') hasShard = true;
+      if (slot.id === 'pulseBlade') hasPulse = true;
+    }
+    const diversity = 1 + elements.size * 0.05;
+    const physicalFocus = (hasShard && hasPulse) ? 1.15 : 1;
+    return { physical: physicalFocus, fire: diversity, poison: diversity, shock: diversity, frost: diversity, elementCount: elements.size };
   }
 
   reset() {
@@ -1119,10 +1483,12 @@ class WeaponSystem {
   }
 
   update(dt, player) {
+    this.synergy = this.computeSynergy();
     for (const slot of this.slots) {
       const def = WEAPONS[slot.id];
       const stats = def.getStats(slot.level, player);
       if (slot.evolved) applyEvolutionBuffs(slot.id, stats);
+      if (stats.damage != null) stats.damage *= (this.synergy[def.damageType] || 1);
 
       if (slot.id === 'orbitDrones') {
         this.updateOrbit(slot, stats, player, dt);
@@ -1159,7 +1525,7 @@ class WeaponSystem {
       const a = baseAngle + (i - (stats.count - 1) / 2) * spread;
       this.bullets.spawn({
         x: player.x, y: player.y, vx: Math.cos(a) * stats.speed, vy: Math.sin(a) * stats.speed,
-        damage: stats.damage, pierce: stats.pierce, radius: 6, life: 2.2,
+        damage: stats.damage, damageType: WEAPONS.shardCannon.damageType, pierce: stats.pierce, radius: 6, life: 2.2,
         color: slot.evolved ? '#ffd54a' : '#5ee6ff', kind: 'bullet', evolvedSplit: slot.evolved,
       });
     }
@@ -1170,7 +1536,8 @@ class WeaponSystem {
     const arc = slot.evolved ? TAU : stats.arc;
     this.effects.spawn({
       kind: 'arc', x: player.x, y: player.y, angle: player.facing, arc,
-      range: stats.range, life: 0.16, damage: stats.damage, color: slot.evolved ? '#ffd54a' : '#ff8a5e',
+      range: stats.range, life: 0.16, damage: stats.damage, damageType: WEAPONS.pulseBlade.damageType,
+      color: slot.evolved ? '#ffd54a' : '#ff8a5e',
     });
     if (this.audio) this.audio.hit();
   }
@@ -1184,8 +1551,8 @@ class WeaponSystem {
     const knock = slot.evolved ? 260 : 140;
     this.enemyManager.queryNearby(player.x, player.y, stats.radius, (e) => {
       const a = angleTo(player.x, player.y, e.x, e.y);
-      this.enemyManager.damageEnemy(e, stats.damage, a, knock);
-      this.particles.damageText(e.x, e.y - 10, stats.damage);
+      const dealt = this.enemyManager.damageEnemy(e, stats.damage, a, knock, WEAPONS.novaBurst.damageType);
+      this.particles.damageText(e.x, e.y - 10, dealt);
     });
     if (this.audio) this.audio.explosion();
   }
@@ -1196,7 +1563,7 @@ class WeaponSystem {
       const a = target ? angleTo(player.x, player.y, target.x, target.y) : randRange(0, TAU);
       this.bullets.spawn({
         x: player.x, y: player.y, vx: Math.cos(a) * stats.speed, vy: Math.sin(a) * stats.speed,
-        damage: stats.damage, pierce: 0, radius: 7, life: 4,
+        damage: stats.damage, damageType: WEAPONS.homingMissile.damageType, pierce: 0, radius: 7, life: 4,
         color: slot.evolved ? '#ffd54a' : '#c98cff', kind: 'missile', splash: stats.splash,
         targetRef: target, turnRate: stats.turnRate, speed: stats.speed,
       });
@@ -1213,8 +1580,8 @@ class WeaponSystem {
     let bounces = stats.bounces;
     while (current && bounces > 0) {
       hit.add(current);
-      this.enemyManager.damageEnemy(current, dmg, angleTo(originX, originY, current.x, current.y), 60);
-      this.particles.damageText(current.x, current.y - 10, dmg);
+      const dealt = this.enemyManager.damageEnemy(current, dmg, angleTo(originX, originY, current.x, current.y), 60, WEAPONS.chainLightning.damageType);
+      this.particles.damageText(current.x, current.y - 10, dealt);
       this.particles.spark(current.x, current.y, 0, '#5ee6ff', 5);
       points.push([current.x, current.y]);
       originX = current.x; originY = current.y;
@@ -1246,7 +1613,7 @@ class WeaponSystem {
       cd -= dt;
       this.enemyManager.queryNearby(ox, oy, 16, (e) => {
         if (cd <= 0) {
-          this.enemyManager.damageEnemy(e, stats.damage, angleTo(ox, oy, e.x, e.y), 90);
+          this.enemyManager.damageEnemy(e, stats.damage, angleTo(ox, oy, e.x, e.y), 90, WEAPONS.orbitDrones.damageType);
           this.particles.spark(e.x, e.y, 0, slot.evolved ? '#ffd54a' : '#5ee6ff', 2);
           cd = stats.tickCooldown;
         }
@@ -1287,14 +1654,14 @@ class WeaponSystem {
       if (hitOne) {
         b.hitSet.add(hitOne);
         const a = angleTo(b.x, b.y, hitOne.x, hitOne.y);
-        this.enemyManager.damageEnemy(hitOne, b.damage, a, 120);
-        this.particles.damageText(hitOne.x, hitOne.y - 10, b.damage);
+        const dealt = this.enemyManager.damageEnemy(hitOne, b.damage, a, 120, b.damageType);
+        this.particles.damageText(hitOne.x, hitOne.y - 10, dealt);
         this.particles.spark(b.x, b.y, Math.atan2(b.vy, b.vx), b.color, 4);
 
         if (b.kind === 'missile') {
           this.enemyManager.queryNearby(b.x, b.y, b.splash, (e2) => {
             if (e2 === hitOne) return;
-            this.enemyManager.damageEnemy(e2, b.damage * 0.6, angleTo(b.x, b.y, e2.x, e2.y), 80);
+            this.enemyManager.damageEnemy(e2, b.damage * 0.6, angleTo(b.x, b.y, e2.x, e2.y), 80, b.damageType);
           });
           this.particles.burst(b.x, b.y, { count: 14, color: '#ffb14a', speed: 180, life: 0.4, glow: true });
           if (this.audio) this.audio.explosion();
@@ -1331,8 +1698,8 @@ class WeaponSystem {
           while (diff < -Math.PI) diff += TAU;
           if (Math.abs(diff) <= e.arc / 2) {
             e.hitSet.add(en);
-            this.enemyManager.damageEnemy(en, e.damage, a, 150);
-            this.particles.damageText(en.x, en.y - 10, e.damage);
+            const dealt = this.enemyManager.damageEnemy(en, e.damage, a, 150, e.damageType);
+            this.particles.damageText(en.x, en.y - 10, dealt);
             this.particles.spark(en.x, en.y, a, '#ff8a5e', 3);
           }
         });
@@ -1445,44 +1812,61 @@ function applyEvolutionBuffs(id, stats) {
 }
 
 // ---- upgrades.js ----
-// Passive ids intentionally match each weapon's `evolutionRequires`.
+// Passive ids intentionally match each weapon's `evolutionRequires`. Each
+// `apply` bakes in a "mastery" kicker at max level (5) — a small extra jump
+// so maxing a passive feels like it transforms into a stronger unique
+// version, the same spirit as weapon evolution, without a second bookkeeping
+// system for it.
 const PASSIVES = {
   might: {
     id: 'might', name: 'Might', maxLevel: 5, icon: 'might',
-    desc: '+8% damage',
-    apply(player, level) { player.might *= 1 + 0.08 * level; },
+    desc: '+8% damage (+mastery at 5)',
+    apply(player, level) { player.might *= 1 + 0.08 * level + (level >= 5 ? 0.1 : 0); },
   },
   vitality: {
     id: 'vitality', name: 'Vitality', maxLevel: 5, icon: 'vitality',
-    desc: '+15% max HP',
-    apply(player, level) { player.maxHp *= 1 + 0.15 * level; },
+    desc: '+15% max HP (+mastery at 5)',
+    apply(player, level) { player.maxHp *= 1 + 0.15 * level + (level >= 5 ? 0.1 : 0); },
   },
   amulet: {
     id: 'amulet', name: 'Amulet', maxLevel: 5, icon: 'amulet',
-    desc: '+8% area',
-    apply(player, level) { player.area *= 1 + 0.08 * level; },
+    desc: '+8% area (+mastery at 5)',
+    apply(player, level) { player.area *= 1 + 0.08 * level + (level >= 5 ? 0.1 : 0); },
   },
   haste: {
     id: 'haste', name: 'Haste', maxLevel: 5, icon: 'haste',
-    desc: '-6% cooldowns',
-    apply(player, level) { player.cooldownMult *= Math.max(0.4, 1 - 0.06 * level); },
+    desc: '-6% cooldowns (+mastery at 5)',
+    apply(player, level) { player.cooldownMult *= Math.max(0.35, 1 - 0.06 * level - (level >= 5 ? 0.05 : 0)); },
   },
   magnet: {
     id: 'magnet', name: 'Magnet', maxLevel: 5, icon: 'magnet',
-    desc: '+25% pickup radius',
-    apply(player, level) { player.magnet *= 1 + 0.25 * level; },
+    desc: '+25% pickup radius (+mastery at 5)',
+    apply(player, level) { player.magnet *= 1 + 0.25 * level + (level >= 5 ? 0.15 : 0); },
   },
   fortune: {
     id: 'fortune', name: 'Fortune', maxLevel: 5, icon: 'fortune',
-    desc: '+12% luck & gold',
-    apply(player, level) { player.luck *= 1 + 0.12 * level; },
+    desc: '+12% luck & cores (+mastery at 5)',
+    apply(player, level) { player.luck *= 1 + 0.12 * level + (level >= 5 ? 0.1 : 0); },
   },
   boots: {
     id: 'boots', name: 'Boots', maxLevel: 5, icon: 'boots',
-    desc: '+7% move speed',
-    apply(player, level) { player.speed *= 1 + 0.07 * level; },
+    desc: '+7% move speed (+mastery at 5)',
+    apply(player, level) { player.speed *= 1 + 0.07 * level + (level >= 5 ? 0.1 : 0); },
   },
 };
+
+const TIER_COLORS = { common: '#9aa4c9', rare: '#5ee6ff', legendary: '#ffd54a' };
+
+function weaponTier(level) {
+  if (level >= 7) return 'legendary';
+  if (level >= 4) return 'rare';
+  return 'common';
+}
+function passiveTier(level) {
+  if (level >= 5) return 'legendary';
+  if (level >= 3) return 'rare';
+  return 'common';
+}
 
 const WEAPON_IDS = Object.keys(WEAPONS);
 const PASSIVE_IDS = Object.keys(PASSIVES);
@@ -1498,10 +1882,11 @@ function rollUpgradeChoices(player, weaponSystem, n = 3) {
     const def = WEAPONS[id];
     if (slot) {
       if (slot.level < def.maxLevel) {
-        pool.push({ kind: 'weaponLevel', id, weight: 10, title: def.name, subtitle: `Level ${slot.level + 1}`, desc: def.desc, level: slot.level + 1, maxLevel: def.maxLevel });
+        const level = slot.level + 1;
+        pool.push({ kind: 'weaponLevel', id, weight: 10, title: def.name, subtitle: `Level ${level}`, desc: def.desc, level, maxLevel: def.maxLevel, tier: weaponTier(level) });
       }
     } else if (weaponSystem.weaponCount() < 6) {
-      pool.push({ kind: 'weaponNew', id, weight: 7, title: def.name, subtitle: 'New Weapon', desc: def.desc, level: 1, maxLevel: def.maxLevel });
+      pool.push({ kind: 'weaponNew', id, weight: 7, title: def.name, subtitle: 'New Weapon', desc: def.desc, level: 1, maxLevel: def.maxLevel, tier: 'common' });
     }
   }
 
@@ -1509,14 +1894,15 @@ function rollUpgradeChoices(player, weaponSystem, n = 3) {
     const def = PASSIVES[id];
     const level = player.passiveLevel(id);
     if (level < def.maxLevel) {
-      pool.push({ kind: 'passive', id, weight: 8, title: def.name, subtitle: level === 0 ? 'New Passive' : `Level ${level + 1}`, desc: def.desc, level: level + 1, maxLevel: def.maxLevel });
+      const nextLevel = level + 1;
+      pool.push({ kind: 'passive', id, weight: 8, title: def.name, subtitle: level === 0 ? 'New Passive' : `Level ${nextLevel}`, desc: def.desc, level: nextLevel, maxLevel: def.maxLevel, tier: passiveTier(nextLevel) });
     }
   }
 
-  // Small gold-only fallback so the pool is never empty late-game once
+  // Small cores-only fallback so the pool is never empty late-game once
   // everything is maxed.
   if (pool.length === 0) {
-    return [{ kind: 'gold', id: 'gold', weight: 1, title: 'Cache of Gold', subtitle: '+50 Gold', desc: 'Everything is maxed. Take the spoils.' }];
+    return [{ kind: 'cores', id: 'cores', weight: 1, title: 'Cache of Cores', subtitle: '+50 Cores', desc: 'Everything is maxed. Take the spoils.', tier: 'common' }];
   }
 
   const luckBias = Math.min(2.2, player.luck);
@@ -1545,11 +1931,31 @@ function applyUpgradeChoice(choice, player, weaponSystem) {
       player.addPassive(choice.id, PASSIVES[choice.id].maxLevel);
       player.recomputeStats(PASSIVES);
       break;
-    case 'gold':
-      player.gold += 50;
+    case 'cores':
+      player.cores += 50;
       break;
   }
   weaponSystem.checkEvolutions(player);
+}
+
+// ---- Shop nodes: same candidate pool as level-up choices, but priced in
+// Cores and offered several at once without pausing the run. ----
+function costFor(choice) {
+  switch (choice.kind) {
+    case 'weaponNew': return 45;
+    case 'weaponLevel': return 22 + choice.level * 6;
+    case 'passive': return 18 + choice.level * 5;
+    default: return 20;
+  }
+}
+
+function rollShopOffers(player, weaponSystem, n = 4) {
+  const choices = rollUpgradeChoices(player, weaponSystem, n);
+  return choices.map(c => ({ ...c, cost: costFor(c) }));
+}
+
+function shopRerollCost(rerollCount) {
+  return 15 + rerollCount * 10;
 }
 
 // ---- pickups.js ----
@@ -1563,8 +1969,8 @@ class PickupManager {
     this.audio = audio;
     this.pool = new Pool(makeGem, (g, x, y, value, kind) => {
       g.x = x; g.y = y; g.value = value; g.kind = kind;
-      g.color = kind === 'gold' ? '#ffd54a' : (value >= 5 ? '#c98cff' : '#5ee6ff');
-      g.radius = kind === 'gold' ? 6 : (value >= 5 ? 7 : 5);
+      g.color = kind === 'cores' ? '#ffd54a' : (value >= 5 ? '#c98cff' : '#5ee6ff');
+      g.radius = kind === 'cores' ? 6 : (value >= 5 ? 7 : 5);
       g.vx = 0; g.vy = 0; g.attracted = false; g.bob = Math.random() * TAU;
     });
   }
@@ -1572,7 +1978,7 @@ class PickupManager {
   reset() { this.pool.clear(); }
 
   spawnXp(x, y, value) { this.pool.spawn(x, y, value, 'xp'); }
-  spawnGold(x, y, value) { this.pool.spawn(x, y, value, 'gold'); }
+  spawnCores(x, y, value) { this.pool.spawn(x, y, value, 'cores'); }
 
   update(dt, player, onCollect) {
     const magnetR2 = player.magnet * player.magnet;
@@ -1606,7 +2012,7 @@ class PickupManager {
       ctx.shadowColor = g.color;
       ctx.shadowBlur = 8;
       ctx.fillStyle = g.color;
-      if (g.kind === 'gold') {
+      if (g.kind === 'cores') {
         ctx.beginPath();
         ctx.arc(0, 0, g.radius, 0, TAU);
         ctx.fill();
@@ -1636,7 +2042,7 @@ function defaultMeta() {
   return {
     gold: 0,
     levels: { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 },
-    stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, totalKills: 0 },
+    stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, bestAct: 0, totalKills: 0, totalNodesCleared: 0 },
   };
 }
 
@@ -1687,12 +2093,14 @@ function getMetaBonuses(meta) {
   return bonuses;
 }
 
-function recordRunResult(meta, { time, level, kills, goldEarned }) {
+function recordRunResult(meta, { time, level, kills, actReached, nodesCleared, goldEarned }) {
   meta.gold += goldEarned;
   meta.stats.totalRuns += 1;
   meta.stats.bestTime = Math.max(meta.stats.bestTime, time);
   meta.stats.bestLevel = Math.max(meta.stats.bestLevel, level);
+  meta.stats.bestAct = Math.max(meta.stats.bestAct, actReached || 0);
   meta.stats.totalKills += kills;
+  meta.stats.totalNodesCleared += nodesCleared || 0;
   saveMeta(meta);
 }
 
@@ -1711,28 +2119,47 @@ const ICONS = {
   magnet: { glyph: 'Mg', color: '#ffd54a' },
   fortune: { glyph: 'F', color: '#ffd54a' },
   boots: { glyph: 'B', color: '#7CFC9A' },
-  gold: { glyph: '●', color: '#ffd54a' },
+  cores: { glyph: '◈', color: '#ffd54a' },
+  glassCannon: { glyph: '⚡', color: '#ff5e8a' },
+  fortress: { glyph: '▣', color: '#ff8a5e' },
+  berserker: { glyph: '⚔', color: '#ffd54a' },
+  vampire: { glyph: '♥', color: '#7CFC9A' },
+};
+
+const NODE_ICONS = {
+  combat: { glyph: '⚔', color: '#ff8a5e' },
+  elite: { glyph: '☠', color: '#ffd54a' },
+  shop: { glyph: '$', color: '#7CFC9A' },
+  treasure: { glyph: '◆', color: '#c98cff' },
+  rest: { glyph: '♥', color: '#5ee6ff' },
+  boss: { glyph: '★', color: '#ff5e8a' },
 };
 
 function iconFor(id) { return ICONS[id] || { glyph: '?', color: '#fff' }; }
+function nodeIconFor(type) { return NODE_ICONS[type] || { glyph: '?', color: '#fff' }; }
 
 class UI {
   constructor() {
     this.el = {};
     [
       'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
+      'run-progress',
       'boss-banner', 'kill-counter',
       'screen-menu', 'btn-play', 'btn-shop', 'menu-stats',
       'screen-characters', 'character-list', 'btn-back-chars',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
-      'screen-levelup', 'levelup-choices',
+      'screen-choice', 'choice-title', 'choice-list',
+      'screen-map', 'map-header', 'map-choices',
+      'screen-node-shop', 'node-shop-cores', 'node-shop-list', 'btn-node-shop-reroll', 'node-shop-reroll-cost', 'btn-node-shop-continue',
       'screen-pause', 'btn-resume', 'btn-quit',
       'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu',
       'mute-btn',
     ].forEach((id) => { this.el[camel(id)] = document.getElementById(id); });
 
-    this.screens = ['screen-menu', 'screen-characters', 'screen-shop', 'screen-levelup', 'screen-pause', 'screen-end']
-      .map(id => document.getElementById(id));
+    this.screens = [
+      'screen-menu', 'screen-characters', 'screen-shop', 'screen-choice',
+      'screen-map', 'screen-node-shop', 'screen-pause', 'screen-end',
+    ].map(id => document.getElementById(id));
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
@@ -1740,17 +2167,18 @@ class UI {
 
   setHudVisible(visible) { this.el.hud.classList.toggle('hidden', !visible); }
 
-  updateHud(player, elapsed, weaponSystem, killCount) {
+  updateHud(player, elapsed, weaponSystem, killCount, runLabel) {
     const hpPct = clamp(player.hp / player.maxHp, 0, 1);
     this.el.hpBar.style.transform = `scaleX(${hpPct})`;
     this.el.hpLabel.textContent = `${Math.ceil(player.hp)} / ${Math.round(player.maxHp)}`;
     const xpPct = clamp(player.xp / player.xpToNext, 0, 1);
     this.el.xpBar.style.transform = `scaleX(${xpPct})`;
     this.el.timer.textContent = formatTime(elapsed);
-    this.el.goldVal.textContent = Math.floor(player.gold);
+    this.el.goldVal.textContent = Math.floor(player.cores);
     this.el.levelBadge.textContent = `Lv ${player.level}`;
     this.el.killCounter.textContent = `Kills: ${killCount}`;
     this.el.killCounter.classList.remove('hidden');
+    if (runLabel) { this.el.runProgress.textContent = runLabel; this.el.runProgress.classList.remove('hidden'); }
 
     this.el.weaponTray.innerHTML = '';
     for (const slot of weaponSystem.slots) {
@@ -1782,9 +2210,10 @@ class UI {
     this.show('screen-menu');
     this.setHudVisible(false);
     this.el.killCounter.classList.add('hidden');
+    this.el.runProgress.classList.add('hidden');
     this.el.menuStats.innerHTML = `
       <div><b>${meta.stats.totalRuns}</b>Runs</div>
-      <div><b>${formatTime(meta.stats.bestTime)}</b>Best Time</div>
+      <div><b>${meta.stats.bestAct || 0}</b>Best Act</div>
       <div><b>${meta.stats.bestLevel}</b>Best Level</div>
       <div><b>${meta.gold}</b>Gold</div>
     `;
@@ -1832,24 +2261,82 @@ class UI {
     }
   }
 
-  showLevelUp(choices, onPick) {
+  // Generic "pick 1 of N" modal — used for in-combat level-ups, post-node
+  // rewards, treasure nodes, and rest-site choices.
+  showChoiceModal(title, choices, onPick) {
     this.hideAllScreens();
-    this.show('screen-levelup');
-    this.el.levelupChoices.innerHTML = '';
+    this.show('screen-choice');
+    this.el.choiceTitle.textContent = title;
+    this.el.choiceList.innerHTML = '';
     for (const choice of choices) {
       const icon = iconFor(choice.id);
+      const tierColor = TIER_COLORS[choice.tier] || null;
       const card = document.createElement('div');
       card.className = 'choice-card';
+      if (tierColor) card.style.borderColor = tierColor + '66';
       card.innerHTML = `
         <div class="choice-icon" style="color:${icon.color};background:${icon.color}22;">${icon.glyph}</div>
         <div class="choice-text">
           <b>${choice.title}</b>
-          <span class="sub">${choice.subtitle}</span>
+          <span class="sub" ${tierColor ? `style="color:${tierColor}"` : ''}>${choice.subtitle}${choice.tier ? ` · ${choice.tier}` : ''}</span>
           <p>${choice.desc}</p>
         </div>`;
       card.addEventListener('click', () => onPick(choice));
-      this.el.levelupChoices.appendChild(card);
+      this.el.choiceList.appendChild(card);
     }
+  }
+
+  showMap(run, onPick) {
+    this.hideAllScreens();
+    this.show('screen-map');
+    this.setHudVisible(false);
+    const act = run.acts[run.actIndex];
+    const step = act.steps[run.stepIndex];
+    this.el.mapHeader.textContent = `Act ${act.actNumber} — ${act.biome.name}  ·  Step ${run.stepIndex + 1}/${act.steps.length}`;
+    this.el.mapChoices.innerHTML = '';
+    for (const node of step.choices) {
+      const icon = nodeIconFor(node.type);
+      const card = document.createElement('div');
+      card.className = 'node-card';
+      card.innerHTML = `
+        <div class="node-icon" style="color:${icon.color};background:${icon.color}22;border-color:${icon.color}55;">${icon.glyph}</div>
+        <b>${node.label}</b>
+        <span class="node-type">${node.type}</span>`;
+      card.addEventListener('click', () => onPick(node));
+      this.el.mapChoices.appendChild(card);
+    }
+  }
+
+  showNodeShop(state, onBuy, onReroll, onContinue) {
+    this.hideAllScreens();
+    this.show('screen-node-shop');
+    this.renderNodeShop(state, onBuy, onReroll, onContinue);
+  }
+
+  renderNodeShop(state, onBuy, onReroll, onContinue) {
+    this.el.nodeShopCores.textContent = Math.floor(state.player.cores);
+    this.el.nodeShopList.innerHTML = '';
+    for (const offer of state.offers) {
+      const icon = iconFor(offer.id);
+      const tierColor = TIER_COLORS[offer.tier] || null;
+      const afford = state.player.cores >= offer.cost;
+      const row = document.createElement('div');
+      row.className = 'shop-row';
+      if (tierColor) row.style.borderColor = tierColor + '66';
+      row.innerHTML = `
+        <div class="shop-row-info">
+          <b style="color:${icon.color}">${icon.glyph} ${offer.title}</b>
+          <p ${tierColor ? `style="color:${tierColor}"` : ''}>${offer.subtitle}${offer.tier ? ` · ${offer.tier}` : ''} — ${offer.desc}</p>
+        </div>
+        <button class="btn shop-buy" ${offer.bought || !afford ? 'disabled' : ''}>${offer.bought ? 'Bought' : `◈ ${offer.cost}`}</button>`;
+      const btn = row.querySelector('.shop-buy');
+      btn.addEventListener('click', () => onBuy(offer));
+      this.el.nodeShopList.appendChild(row);
+    }
+    this.el.nodeShopRerollCost.textContent = state.rerollCost;
+    this.el.btnNodeShopReroll.disabled = state.player.cores < state.rerollCost;
+    this.el.btnNodeShopReroll.onclick = onReroll;
+    this.el.btnNodeShopContinue.onclick = onContinue;
   }
 
   showPause() { this.hideAllScreens(); this.show('screen-pause'); }
@@ -1857,12 +2344,14 @@ class UI {
   showEnd(victory, stats) {
     this.hideAllScreens();
     this.show('screen-end');
-    this.el.endTitle.textContent = victory ? 'You Survived!' : 'You Fell...';
+    this.el.endTitle.textContent = victory ? 'Run Complete!' : 'You Fell...';
     this.el.endTitle.style.color = victory ? '#7CFC9A' : '#ff5e8a';
     this.el.endStats.innerHTML = `
-      <div><b>${formatTime(stats.time)}</b>Time Survived</div>
+      <div><b>Act ${stats.actReached}</b>Act Reached</div>
+      <div><b>${stats.nodesCleared}</b>Nodes Cleared</div>
       <div><b>${stats.level}</b>Level Reached</div>
       <div><b>${stats.kills}</b>Kills</div>
+      <div><b>${formatTime(stats.time)}</b>Time Survived</div>
       <div><b>${stats.goldEarned}</b>Gold Earned</div>
     `;
   }
@@ -1892,19 +2381,25 @@ class Game {
     this.meta = loadMeta();
     this.player = null;
     this.state = 'menu';
-    this.elapsed = 0;
+    this.elapsed = 0; // total time across the whole run (display only)
     this.killCount = 0;
-    this.goldEarnedThisRun = 0;
+
+    this.run = null;
+    this.currentNode = null;
+    this.nodeType = null;
+    this.nodeBiome = null;
+    this.nodeActNumber = 1;
+    this.nodeElapsed = 0;
+    this.nodeDuration = 0;
 
     this.camX = 0; this.camY = 0;
     this.shakeTime = 0; this.shakeMag = 0;
-    this.bgOffset = 0;
 
     this.pendingLevelUps = [];
+    this.hazards = [];
 
     this.enemyManager.onDeath = (e) => this.onEnemyDeath(e);
     this.enemyManager.onPlayerHit = (amount, x, y) => this.onPlayerHit(amount, x, y);
-    this.enemyManager.onBossSpawned = (name) => { ui.flashBossBanner(name); this.addShake(14, 0.5); };
 
     this.bindMenus();
   }
@@ -1915,13 +2410,14 @@ class Game {
 
   // ---------------- Menu wiring ----------------
   bindMenus() {
-    ui.el.btnPlay.addEventListener('click', () => { audio.uiClick(); ui.showCharacterSelect(listCharacters(), (id) => this.startRun(id)); });
+    const goToCharacterSelect = () => { audio.uiClick(); ui.showCharacterSelect(listCharacters(), (id) => this.showRelicSelect(id)); };
+    ui.el.btnPlay.addEventListener('click', goToCharacterSelect);
     ui.el.btnShop.addEventListener('click', () => { audio.uiClick(); ui.showShop(this.meta, (id) => this.buyMetaUpgrade(id)); });
     ui.el.btnBackChars.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnBackShop.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnResume.addEventListener('click', () => { audio.uiClick(); this.resume(); });
     ui.el.btnQuit.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
-    ui.el.btnRetry.addEventListener('click', () => { audio.uiClick(); ui.showCharacterSelect(listCharacters(), (id) => this.startRun(id)); });
+    ui.el.btnRetry.addEventListener('click', goToCharacterSelect);
     ui.el.btnEndMenu.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.muteBtn.addEventListener('click', () => {
       this.muted = !this.muted;
@@ -1942,32 +2438,217 @@ class Game {
     ui.showMenu(this.meta);
   }
 
+  runLabel() {
+    if (!this.run) return '';
+    const act = currentAct(this.run);
+    const elements = this.weaponSystem.synergy ? this.weaponSystem.synergy.elementCount : 0;
+    return `Act ${act.actNumber} · Node ${this.run.stepIndex + 1}/${act.steps.length} · Elements ${elements}/4`;
+  }
+
+  showRelicSelect(characterId) {
+    audio.uiClick();
+    const choices = listRelics().map(r => ({ kind: 'relic', id: r.id, title: r.name, subtitle: 'Relic', desc: r.desc, tier: 'legendary' }));
+    ui.showChoiceModal('Choose a Relic', choices, (choice) => this.startRun(characterId, choice.id));
+  }
+
   // ---------------- Run lifecycle ----------------
-  startRun(characterId) {
+  startRun(characterId, relicId) {
     audio.resume();
     const character = getCharacter(characterId);
+    const relic = getRelic(relicId);
     const bonuses = getMetaBonuses(this.meta);
-    this.player = new Player(character, bonuses);
+    this.player = new Player(character, bonuses, relic);
     this.player.recomputeStats(PASSIVES);
     this.player.hp = this.player.maxHp;
 
-    this.enemyManager.reset();
     this.weaponSystem.reset();
-    this.pickups.reset();
-    this.particles.clear();
-
     this.weaponSystem.equip(character.startWeapon);
 
     this.elapsed = 0;
     this.killCount = 0;
-    this.goldEarnedThisRun = 0;
+    this.run = generateRun();
+
+    this.goToMap();
+  }
+
+  goToMap() {
+    this.state = 'map';
+    ui.showMap(this.run, (node) => this.selectNode(node));
+  }
+
+  selectNode(node) {
+    audio.uiClick();
+    this.currentNode = node;
+    if (node.type === 'combat' || node.type === 'elite' || node.type === 'boss') {
+      this.beginCombatNode(node);
+    } else if (node.type === 'shop') {
+      this.beginShopNode(node);
+    } else if (node.type === 'treasure') {
+      this.beginTreasureNode(node);
+    } else if (node.type === 'rest') {
+      this.beginRestNode(node);
+    }
+  }
+
+  beginCombatNode(node) {
+    this.enemyManager.reset();
+    this.pickups.reset();
+    this.particles.clear();
+
+    this.nodeType = node.type;
+    this.nodeBiome = node.biome;
+    this.nodeActNumber = node.biome.act;
+    this.nodeElapsed = 0;
+    this.nodeDuration = node.type === 'combat' ? randRange(100, 130) : null;
+
     this.camX = this.player.x; this.camY = this.player.y;
+    this.hazards = this.generateHazards(node.biome, this.player.x, this.player.y);
+
+    if (node.type === 'elite') {
+      const elite = this.enemyManager.spawnElite(node.biome, this.player, WORLD_HALF, this.nodeActNumber);
+      const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura' };
+      ui.flashBossBanner(`Elite Enemy (${affixNames[elite.affix] || elite.affix})`);
+    } else if (node.type === 'boss') {
+      this.enemyManager.spawnBoss(node.biome.boss, this.player, WORLD_HALF);
+      ui.flashBossBanner(BOSS_TYPES[node.biome.boss].name);
+      this.addShake(14, 0.5);
+    }
 
     this.state = 'playing';
     ui.hideAllScreens();
     ui.setHudVisible(true);
-    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount);
+    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel());
     audio.startMusic();
+  }
+
+  // Static terrain hazards scattered around the node's starting position —
+  // tactical ground the player has to route around while fighting.
+  generateHazards(biome, originX, originY) {
+    if (!biome.hazardType) return [];
+    const hazards = [];
+    const count = 3 + Math.floor(randRange(0, 2));
+    for (let i = 0; i < count; i++) {
+      const angle = randRange(0, TAU);
+      const dist = randRange(280, 650);
+      hazards.push({
+        x: originX + Math.cos(angle) * dist,
+        y: originY + Math.sin(angle) * dist,
+        radius: randRange(55, 90),
+        type: biome.hazardType,
+        tickTimer: 0,
+      });
+    }
+    return hazards;
+  }
+
+  updateHazards(dt) {
+    if (this.hazards.length === 0) return;
+    const p = this.player;
+    for (const h of this.hazards) {
+      h.tickTimer -= dt;
+      const d = Math.hypot(p.x - h.x, p.y - h.y);
+      if (d <= h.radius) {
+        if (h.tickTimer <= 0) {
+          h.tickTimer = 0.5;
+          const dmg = h.type === 'fire' ? 7 : 5;
+          this.onPlayerHit(dmg, p.x, p.y);
+        }
+      }
+    }
+  }
+
+  beginShopNode() {
+    this.state = 'nodeShop';
+    this._shopRerollCount = 0;
+    this.shopState = {
+      player: this.player,
+      offers: rollShopOffers(this.player, this.weaponSystem, 4).map(o => ({ ...o, bought: false })),
+      rerollCost: shopRerollCost(0),
+    };
+    ui.showNodeShop(this.shopState,
+      (offer) => this.buyShopOffer(offer),
+      () => this.rerollShop(),
+      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+  }
+
+  buyShopOffer(offer) {
+    if (offer.bought || this.player.cores < offer.cost) return;
+    this.player.cores -= offer.cost;
+    applyUpgradeChoice(offer, this.player, this.weaponSystem);
+    offer.bought = true;
+    audio.pickup();
+    ui.renderNodeShop(this.shopState,
+      (o) => this.buyShopOffer(o),
+      () => this.rerollShop(),
+      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+  }
+
+  rerollShop() {
+    const cost = this.shopState.rerollCost;
+    if (this.player.cores < cost) return;
+    this.player.cores -= cost;
+    this._shopRerollCount += 1;
+    this.shopState.offers = rollShopOffers(this.player, this.weaponSystem, 4).map(o => ({ ...o, bought: false }));
+    this.shopState.rerollCost = shopRerollCost(this._shopRerollCount);
+    audio.uiClick();
+    ui.renderNodeShop(this.shopState,
+      (o) => this.buyShopOffer(o),
+      () => this.rerollShop(),
+      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+  }
+
+  beginTreasureNode() {
+    this.state = 'nodeChoice';
+    const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
+    ui.showChoiceModal('Treasure Found', choices, (choice) => {
+      applyUpgradeChoice(choice, this.player, this.weaponSystem);
+      this.run.nodesCleared += 1;
+      audio.pickup();
+      this.advanceRun();
+    });
+  }
+
+  beginRestNode() {
+    this.state = 'nodeChoice';
+    const healAmt = Math.round(this.player.maxHp * 0.35);
+    const choices = [
+      { kind: 'restHeal', id: 'vitality', title: 'Rest & Heal', subtitle: `+${healAmt} HP`, desc: 'Patch up before the next fight.' },
+      { kind: 'restTemper', id: 'might', title: 'Temper Gear', subtitle: '+5% Might', desc: 'Sharpen your weapons instead of resting.' },
+    ];
+    ui.showChoiceModal('Safehouse', choices, (choice) => {
+      if (choice.kind === 'restHeal') {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
+      } else {
+        this.player.baseMight *= 1.05;
+        this.player.recomputeStats(PASSIVES);
+      }
+      this.run.nodesCleared += 1;
+      audio.levelUp();
+      this.advanceRun();
+    });
+  }
+
+  onCombatNodeCleared() {
+    this.run.nodesCleared += 1;
+    this.state = 'nodeChoice';
+    audio.levelUp();
+    this.addShake(6, 0.25);
+    const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
+    ui.showChoiceModal('Node Cleared!', choices, (choice) => {
+      applyUpgradeChoice(choice, this.player, this.weaponSystem);
+      this.advanceRun();
+    });
+  }
+
+  advanceRun() {
+    this.run.stepIndex += 1;
+    if (this.run.stepIndex >= currentAct(this.run).steps.length) {
+      if (isLastAct(this.run)) { this.endRun(true); return; }
+      this.run.actIndex += 1;
+      this.run.stepIndex = 0;
+      this.player.hp = this.player.maxHp; // breather between acts
+    }
+    this.goToMap();
   }
 
   togglePause() {
@@ -1986,7 +2667,14 @@ class Game {
     this.state = victory ? 'victory' : 'gameover';
     audio.stopMusic();
     if (victory) audio.victory(); else audio.gameOver();
-    const stats = { time: this.elapsed, level: this.player.level, kills: this.killCount, goldEarned: Math.floor(this.goldEarnedThisRun) };
+    const actReached = this.run.actIndex + 1;
+    const goldEarned = Math.floor(
+      this.player.cores * 0.5 + this.run.nodesCleared * 12 + this.run.actIndex * 60 + (victory ? 150 : 0)
+    );
+    const stats = {
+      time: this.elapsed, level: this.player.level, kills: this.killCount,
+      actReached, nodesCleared: this.run.nodesCleared, goldEarned,
+    };
     recordRunResult(this.meta, stats);
     ui.setHudVisible(false);
     ui.showEnd(victory, stats);
@@ -1996,13 +2684,22 @@ class Game {
   onEnemyDeath(e) {
     this.killCount += 1;
     this.pickups.spawnXp(e.x, e.y, e.xp);
-    const goldChance = e.isBoss ? 1 : 0.16 * clamp(this.player.luck, 0.5, 3);
-    if (Math.random() < goldChance) {
-      this.pickups.spawnGold(e.x, e.y, e.isBoss ? randRange(30, 60) : randRange(1, 4));
+    const coreChance = e.isBoss ? 1 : (e.isElite ? 0.9 : 0.16 * clamp(this.player.luck, 0.5, 3));
+    if (Math.random() < coreChance) {
+      const value = e.isBoss ? randRange(30, 60) : (e.isElite ? randRange(15, 28) : randRange(1, 4));
+      this.pickups.spawnCores(e.x, e.y, value);
     }
-    this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : 10, color: e.color, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
+    this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: e.color, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
     if (audio) audio.enemyDeath();
     if (e.isBoss) this.addShake(16, 0.6);
+
+    if (e.affix === 'explosive') {
+      const d = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+      if (d < 150) this.onPlayerHit(35, e.x, e.y);
+      this.particles.burst(e.x, e.y, { count: 30, color: '#ffb14a', speed: 300, life: 0.6, glow: true });
+      audio.explosion();
+      this.addShake(12, 0.4);
+    }
   }
 
   onPlayerHit(amount, x, y) {
@@ -2021,8 +2718,7 @@ class Game {
       this.particles.spark(g.x, g.y, 0, '#5ee6ff', 3);
       if (levels) this.queueLevelUps(levels.length);
     } else {
-      this.player.gold += g.value;
-      this.goldEarnedThisRun += g.value;
+      this.player.cores += g.value;
       this.particles.spark(g.x, g.y, 0, '#ffd54a', 3);
     }
   }
@@ -2039,7 +2735,7 @@ class Game {
     audio.levelUp();
     this.addShake(4, 0.2);
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
-    ui.showLevelUp(choices, (choice) => {
+    ui.showChoiceModal('Level Up!', choices, (choice) => {
       applyUpgradeChoice(choice, this.player, this.weaponSystem);
       if (this.pendingLevelUps.length > 0) {
         this.presentNextLevelUp();
@@ -2056,8 +2752,14 @@ class Game {
     if (this.state !== 'playing') return;
 
     this.elapsed += dt;
+    this.nodeElapsed += dt;
+
+    const elite = this.enemyManager.activeElite;
+    this.player.auraSlowMult = (elite && elite.affix === 'frozenAura' && Math.hypot(this.player.x - elite.x, this.player.y - elite.y) < 220) ? 0.6 : 1;
+
     this.player.update(dt, input, WORLD_HALF);
-    this.enemyManager.update(dt, this.elapsed, this.player, WORLD_HALF);
+    this.updateHazards(dt);
+    this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, this.nodeType === 'combat');
     this.weaponSystem.update(dt, this.player);
     this.weaponSystem.checkEvolutions(this.player);
     this.pickups.update(dt, this.player, (g) => this.onPickupCollect(g));
@@ -2069,16 +2771,21 @@ class Game {
 
     if (this.shakeTime > 0) this.shakeTime -= dt;
 
-    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount);
+    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel());
 
-    if (this.elapsed >= RUN_LENGTH) this.endRun(true);
+    if (this.player.dead) return; // onPlayerHit already triggered endRun
+
+    if (this.nodeType === 'combat' && this.nodeElapsed >= this.nodeDuration) this.onCombatNodeCleared();
+    else if (this.nodeType === 'elite' && !this.enemyManager.activeElite) this.onCombatNodeCleared();
+    else if (this.nodeType === 'boss' && !this.enemyManager.activeBoss) this.onCombatNodeCleared();
   }
 
   // ---------------- Rendering ----------------
   render() {
     const ctx = this.ctx;
     ctx.save();
-    ctx.fillStyle = '#05060f';
+    const bg = (this.nodeBiome && this.state === 'playing') ? this.nodeBiome.bg : '#05060f';
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, this.width, this.height);
 
     let sx = 0, sy = 0;
@@ -2093,6 +2800,7 @@ class Game {
 
     const camX = this.camX, camY = this.camY;
     this.drawBackground(ctx, camX, camY);
+    this.drawHazards(ctx, camX, camY);
 
     if (this.player) {
       this.pickups.render(ctx, camX, camY);
@@ -2106,8 +2814,11 @@ class Game {
   }
 
   drawBackground(ctx, camX, camY) {
+    const biome = this.nodeBiome;
+    const gridColor = biome ? biome.grid : 'rgba(94, 230, 255, 0.06)';
+    const accent = biome ? biome.accent : '#c98cff';
     const spacing = 64;
-    ctx.strokeStyle = 'rgba(94, 230, 255, 0.06)';
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     const halfW = this.width / 2, halfH = this.height / 2;
     const startX = -halfW - ((camX + halfW) % spacing);
@@ -2120,12 +2831,35 @@ class Game {
     // World boundary
     const left = -WORLD_HALF - camX, right = WORLD_HALF - camX;
     const top = -WORLD_HALF - camY, bottom = WORLD_HALF - camY;
-    ctx.strokeStyle = 'rgba(201, 140, 255, 0.35)';
-    ctx.shadowColor = '#c98cff';
+    ctx.strokeStyle = accent + '59';
+    ctx.shadowColor = accent;
     ctx.shadowBlur = 20;
     ctx.lineWidth = 4;
     ctx.strokeRect(left, top, right - left, bottom - top);
     ctx.shadowBlur = 0;
+  }
+
+  drawHazards(ctx, camX, camY) {
+    if (this.hazards.length === 0) return;
+    const color = { poison: '#7CFC9A', fire: '#ff8a5e' };
+    for (const h of this.hazards) {
+      const sx = h.x - camX, sy = h.y - camY;
+      const c = color[h.type] || '#ffffff';
+      const pulse = 0.85 + 0.15 * Math.sin(this.elapsed * 3 + h.x * 0.01);
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = c;
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(sx, sy, h.radius * pulse, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   drawPlayer(ctx, camX, camY) {
@@ -2169,7 +2903,7 @@ const canvas = document.getElementById('game-canvas');
 const game = new Game(canvas);
 window.__game = game; // debug hook for automated/manual testing in the console
 
-const input = { left: false, right: false, up: false, down: false };
+const input = { left: false, right: false, up: false, down: false, dashPressed: false };
 
 const KEY_MAP = {
   KeyA: 'left', ArrowLeft: 'left',
@@ -2183,6 +2917,10 @@ window.addEventListener('keydown', (e) => {
   if (dir) { input[dir] = true; e.preventDefault(); }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (game.state === 'playing' || game.state === 'paused') game.togglePause();
+  }
+  if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+    input.dashPressed = true;
+    e.preventDefault();
   }
 });
 
@@ -2243,6 +2981,7 @@ function loop(now) {
   last = now;
   dt = Math.min(dt, 1 / 20); // clamp to avoid spiral-of-death after a tab switch / stall
   game.update(dt, input);
+  input.dashPressed = false; // edge-triggered: consumed once per keypress, not held
   game.render();
   requestAnimationFrame(loop);
 }

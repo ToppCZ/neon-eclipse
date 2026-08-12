@@ -123,6 +123,16 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+#run-progress {
+  max-width: 640px;
+  margin: 2px auto 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--purple);
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+
 #weapon-tray {
   position: fixed;
   bottom: 16px;
@@ -302,6 +312,34 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
 .choice-text b { display: block; font-size: 15px; }
 .choice-text .sub { font-size: 11px; color: var(--purple); font-weight: 700; }
 .choice-text p { margin: 2px 0 0; font-size: 12px; color: var(--text-dim); }
+
+/* ---------- Run map (node selection) ---------- */
+.node-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.node-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 20px 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  pointer-events: all;
+  background: rgba(255,255,255,0.02);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.node-card:hover { transform: translateY(-3px); border-color: var(--cyan); background: rgba(94,230,255,0.06); }
+.node-icon {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 18px;
+}
+.node-card b { font-size: 14px; }
+.node-type { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+
+@media (max-width: 560px) {
+  .node-list { grid-template-columns: 1fr; }
+}
 
 /* ---------- End screen ---------- */
 .end-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 20px; }
