@@ -1,0 +1,66 @@
+name: Strategy Game - Web Build & Deploy
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "strategy-game/**"
+      - ".github/workflows/strategy-game-web.yml"
+  workflow_dispatch: {}
+
+env:
+  GODOT_VERSION: 4.3
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment can run at a time.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  export-web:
+    name: Web export
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3
+    env:
+      # GitHub Actions forces HOME=/github/home for container jobs, but this
+      # image's export templates are baked in under /root. See the Android
+      # workflow for the full explanation.
+      HOME: /root
+    defaults:
+      run:
+        working-directory: strategy-game
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import project (resolves resource UIDs before export)
+        run: |
+          mkdir -v -p build/web
+          godot --headless --verbose --import
+
+      - name: Export Web build
+        run: |
+          godot --headless --verbose --export-debug "Web" build/web/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: strategy-game/build/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: export-web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
