@@ -1,0 +1,50 @@
+name: Strategy Game - Android Build
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "strategy-game/**"
+      - ".github/workflows/strategy-game-android.yml"
+  workflow_dispatch: {}
+
+env:
+  GODOT_VERSION: 4.3
+  EXPORT_NAME: IronfallTactics
+
+jobs:
+  export-android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3
+    defaults:
+      run:
+        working-directory: strategy-game
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate debug keystore
+        run: |
+          rm -f ~/.android/debug.keystore
+          mkdir -p ~/.android
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
+            -keystore ~/.android/debug.keystore -storepass android \
+            -dname "CN=Ironfall Tactics,O=ToppCZ,C=US" -validity 9999 -deststoretype pkcs12
+
+      - name: Import project (resolves resource UIDs before export)
+        run: |
+          mkdir -v -p build/android
+          godot --headless --verbose --import
+
+      - name: Export Android debug APK
+        run: |
+          godot --headless --verbose --export-debug "Android" build/android/${EXPORT_NAME}.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.EXPORT_NAME }}-android-debug
+          path: strategy-game/build/android/${{ env.EXPORT_NAME }}.apk
+          if-no-files-found: error

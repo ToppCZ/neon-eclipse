@@ -10,3 +10,9 @@ desktop/obj/
 desktop/publish/
 desktop/publish_out/
 desktop/*.zip
+
+# Godot (strategy-game/)
+strategy-game/.godot/
+strategy-game/build/
+strategy-game/*.translation
+strategy-game/export.cfg
