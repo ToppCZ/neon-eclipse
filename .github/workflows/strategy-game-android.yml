@@ -19,6 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: barichello/godot-ci:4.3
+    env:
+      # GitHub Actions forces HOME=/github/home inside `container:` jobs, but
+      # this image's export templates, Android SDK config, and Java SDK path
+      # are all baked in under /root. Pin HOME back to /root so Godot finds them.
+      HOME: /root
     defaults:
       run:
         working-directory: strategy-game
