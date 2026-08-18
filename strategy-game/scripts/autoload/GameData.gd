@@ -2,18 +2,23 @@ extends Node
 ## Central static game data: unit stats, type matchups, tech defs, tunables.
 ## Autoloaded as "GameData".
 
-const GRID_COLS := 12
-const GRID_ROWS := 8
-const TILE_SIZE := 80
+const GRID_COLS := 16
+const GRID_ROWS := 12
+const TILE_SIZE := 60
 
 const STARTING_GOLD := 300
 const CAPTURE_TICKS := 2 # turns of uninterrupted occupation needed to flip a point
 const CAPTURE_INCOME := 30
 const HQ_INCOME := 20
+const RESOURCE_INCOME_MIN := 10 # resource deposits yield a variable amount each turn
+const RESOURCE_INCOME_MAX := 50
 
 enum Faction { PLAYER = 0, AI = 1 }
 enum UnitType { INFANTRY, CAVALRY, RANGED, SIEGE }
-enum Terrain { PLAIN, FOREST, HILL, WATER, CAPTURE, HQ_PLAYER, HQ_AI }
+enum Terrain { PLAIN, FOREST, HILL, WATER, CAPTURE, RESOURCE, BARRACKS, HQ_PLAYER, HQ_AI }
+
+## Terrain types that can be owned/contested via the capture mechanic.
+const CAPTURABLE_TERRAIN := [Terrain.CAPTURE, Terrain.RESOURCE, Terrain.BARRACKS]
 
 const UNIT_DEFS := {
 	UnitType.INFANTRY: {
@@ -88,6 +93,8 @@ const TERRAIN_DEFENSE_BONUS := {
 	Terrain.HILL: 0.35,
 	Terrain.WATER: 0.0,
 	Terrain.CAPTURE: 0.0,
+	Terrain.RESOURCE: 0.0,
+	Terrain.BARRACKS: 0.1,
 	Terrain.HQ_PLAYER: 0.15,
 	Terrain.HQ_AI: 0.15,
 }
@@ -99,6 +106,8 @@ const TERRAIN_MOVE_COST := {
 	Terrain.HILL: 2,
 	Terrain.WATER: 999,
 	Terrain.CAPTURE: 1,
+	Terrain.RESOURCE: 1,
+	Terrain.BARRACKS: 1,
 	Terrain.HQ_PLAYER: 1,
 	Terrain.HQ_AI: 1,
 }

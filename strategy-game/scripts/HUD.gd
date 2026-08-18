@@ -94,7 +94,7 @@ func _build_recruit_panel() -> void:
 	recruit_panel.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "Recruit at HQ"
+	title.text = "Recruit (HQ / Barracks)"
 	title.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(title)
 

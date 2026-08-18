@@ -9,15 +9,24 @@ eras into one grid battle:
   Siege is a slow high-damage indirect-fire unit that's weak to Cavalry
   rushes), and terrain gives real defense bonuses (forest, hills).
 - **Territory capture & economy** (Command & Conquer-style control points /
-  Advance Wars properties) — capture neutral points on the map to grow your
-  gold income each turn, which funds recruiting more units.
-- **Base building, lite** (Clash of Clans) — recruit new units at your HQ by
-  spending the gold your territory generates.
+  Advance Wars properties) — capture **Capture Points** (fixed gold/turn) and
+  **Resource Deposits** (a variable, randomized gold/turn — some turns are a
+  windfall, some are lean, so holding several evens out the swings) to fund
+  your army.
+- **Base building, lite** (Clash of Clans / RTS production buildings) —
+  recruit new units at your HQ, or at any **Barracks** you've captured out on
+  the map — inspired by Advance Wars factories and C&C war factories, extra
+  Barracks are worth fighting over since they let you reinforce closer to
+  the front line instead of marching everything from your HQ.
 - **Tech tree, lite** (Civilization / 4X) — spend gold on one-time research
   (Logistics, Armor Plating, Weaponry) that permanently upgrades your whole
   army for the rest of the match.
 - **Win conditions** — eliminate the enemy army, or march a unit onto the
   enemy HQ for an instant win (Advance Wars-style HQ capture).
+
+The map is 16x12 tiles with 6 starting units per side (up from an initial
+12x8 / 4-unit prototype), symmetric buildings on both flanks, and a central
+no-man's-land of forest/hill/water terrain to fight over.
 
 No external art or audio assets — everything is drawn procedurally at
 runtime (circles, rectangles, colors), matching this repo's existing
@@ -61,7 +70,8 @@ godot --path strategy-game
   put) — tiles you can attack from your new position highlight red.
 - Tap a red-highlighted enemy to attack, or tap anywhere else to skip the
   attack and end that unit's turn.
-- **Recruit** panel (sidebar): spend gold to add a new unit at your HQ.
+- **Recruit** panel (sidebar): spend gold to add a new unit at your HQ, or at
+  any Barracks you control.
 - **Tech** panel (sidebar): spend gold on a one-time army-wide upgrade.
 - **End Turn**: hands control to the AI, which recruits, advances on
   capture points, and attacks when it can. Control returns to you
@@ -101,12 +111,21 @@ This is a first playable slice, not the final game. Known simplifications:
   separated from rendering/input).
 - Unit roster is 4 types; more types (e.g., a scout/vision unit, an
   anti-siege unit) would deepen the counter-play.
+- Buildings are currently 2 types (Resource Deposit, Barracks) captured the
+  same way as Capture Points; a natural next step is giving Barracks a
+  build queue / limited unit-type specialization instead of producing the
+  full roster.
 
 ## Testing notes
 
 Every script here was compiled and exercised headlessly with Godot's
 `--headless` mode during development (grid pathfinding, combat resolution,
 capture ticking, tech purchase, recruiting, and a full AI turn cycle were
-all run and asserted against, not just eyeballed) — but it has **not** been
-tested on a physical Android device or in the Godot editor GUI. Please
-report anything that looks wrong on-device.
+all run and asserted against, not just eyeballed). The map/buildings update
+was additionally verified with an actual rendered frame (Xvfb + software
+GL, screenshotted) to catch draw-time errors headless mode can't reach, and
+a real touch-input bug — Godot's default touch↔mouse emulation was causing
+every tap to fire twice, silently auto-completing a unit's turn right after
+selection — was found from real device testing and fixed (both emulation
+directions are now disabled in `project.godot`; each real touch or mouse
+click fires exactly once). Still not tested in the Godot editor GUI itself.

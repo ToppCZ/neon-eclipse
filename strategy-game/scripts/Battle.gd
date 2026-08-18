@@ -30,15 +30,20 @@ var grid_renderer: GridRenderer
 var units_layer: Node2D
 var hud: HUD
 
+## 16x12, fully mirrored (horizontally and vertically) for fairness.
 const MAP_LAYOUT := [
-	". . F . . . . . . F . .",
-	". . . H . W W . H . . .",
-	". . . . . C C . . . . .",
-	"P . . . . . . . . . . A",
-	"P . . . . . . . . . . A",
-	". . . . . C C . . . . .",
-	". . . H . W W . H . . .",
-	". . F . . . . . . F . .",
+	". . F . . . . . . . . . . F . .",
+	". . . H . . W W W W . . H . . .",
+	". . . . . C . . . . C . . . . .",
+	". . . . R . . . . . . R . . . .",
+	". . . . . . B . . B . . . . . .",
+	"P P . . . . . . . . . . . . A A",
+	"P P . . . . . . . . . . . . A A",
+	". . . . . . B . . B . . . . . .",
+	". . . . R . . . . . . R . . . .",
+	". . . . . C . . . . C . . . . .",
+	". . . H . . W W W W . . H . . .",
+	". . F . . . . . . . . . . F . .",
 ]
 
 const TERRAIN_CHAR := {
@@ -47,6 +52,8 @@ const TERRAIN_CHAR := {
 	"H": GameData.Terrain.HILL,
 	"W": GameData.Terrain.WATER,
 	"C": GameData.Terrain.CAPTURE,
+	"R": GameData.Terrain.RESOURCE,
+	"B": GameData.Terrain.BARRACKS,
 	"P": GameData.Terrain.HQ_PLAYER,
 	"A": GameData.Terrain.HQ_AI,
 }
@@ -95,15 +102,19 @@ func _generate_map() -> void:
 			capture_progress[x][y] = 0
 
 func _spawn_starting_units() -> void:
-	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.PLAYER, Vector2i(1, 3))
-	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.PLAYER, Vector2i(1, 4))
-	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.PLAYER, Vector2i(2, 2))
-	spawn_unit(GameData.UnitType.RANGED, GameData.Faction.PLAYER, Vector2i(2, 5))
+	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.PLAYER, Vector2i(2, 4))
+	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.PLAYER, Vector2i(2, 5))
+	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.PLAYER, Vector2i(2, 6))
+	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.PLAYER, Vector2i(2, 7))
+	spawn_unit(GameData.UnitType.RANGED, GameData.Faction.PLAYER, Vector2i(3, 5))
+	spawn_unit(GameData.UnitType.SIEGE, GameData.Faction.PLAYER, Vector2i(3, 6))
 
-	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.AI, Vector2i(10, 3))
-	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.AI, Vector2i(10, 4))
-	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.AI, Vector2i(9, 2))
-	spawn_unit(GameData.UnitType.RANGED, GameData.Faction.AI, Vector2i(9, 5))
+	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.AI, Vector2i(13, 4))
+	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.AI, Vector2i(13, 5))
+	spawn_unit(GameData.UnitType.CAVALRY, GameData.Faction.AI, Vector2i(13, 6))
+	spawn_unit(GameData.UnitType.INFANTRY, GameData.Faction.AI, Vector2i(13, 7))
+	spawn_unit(GameData.UnitType.RANGED, GameData.Faction.AI, Vector2i(12, 5))
+	spawn_unit(GameData.UnitType.SIEGE, GameData.Faction.AI, Vector2i(12, 6))
 
 # --- Unit lifecycle -------------------------------------------------------
 
@@ -173,13 +184,22 @@ func get_faction_hq_tiles(faction: int) -> Array[Vector2i]:
 				tiles.append(Vector2i(x, y))
 	return tiles
 
+## HQ tiles plus any Barracks the faction has captured - all valid recruit spawn points.
+func get_faction_recruit_tiles(faction: int) -> Array[Vector2i]:
+	var tiles := get_faction_hq_tiles(faction)
+	for x in range(GameData.GRID_COLS):
+		for y in range(GameData.GRID_ROWS):
+			if terrain[x][y] == GameData.Terrain.BARRACKS and capture_owner[x][y] == faction:
+				tiles.append(Vector2i(x, y))
+	return tiles
+
 func find_ai_move_goal(u: Unit):
 	var best: Vector2i
 	var best_dist := 999999
 	var found := false
 	for x in range(GameData.GRID_COLS):
 		for y in range(GameData.GRID_ROWS):
-			if terrain[x][y] == GameData.Terrain.CAPTURE and capture_owner[x][y] != u.faction:
+			if GameData.CAPTURABLE_TERRAIN.has(terrain[x][y]) and capture_owner[x][y] != u.faction:
 				var d: int = abs(x - u.grid_pos.x) + abs(y - u.grid_pos.y)
 				if d < best_dist:
 					best_dist = d
@@ -358,8 +378,8 @@ func _on_recruit_requested(type: int) -> void:
 	var cost: int = GameData.UNIT_DEFS[type]["cost"]
 	if gold[GameData.Faction.PLAYER] < cost:
 		return
-	var hq_tiles := get_faction_hq_tiles(GameData.Faction.PLAYER)
-	for pos in hq_tiles:
+	var recruit_tiles := get_faction_recruit_tiles(GameData.Faction.PLAYER)
+	for pos in recruit_tiles:
 		if get_unit_at(pos) == null:
 			gold[GameData.Faction.PLAYER] -= cost
 			spawn_unit(type, GameData.Faction.PLAYER, pos)
@@ -426,8 +446,13 @@ func _start_turn(faction: int) -> void:
 	var income: int = GameData.HQ_INCOME
 	for x in range(GameData.GRID_COLS):
 		for y in range(GameData.GRID_ROWS):
-			if terrain[x][y] == GameData.Terrain.CAPTURE and capture_owner[x][y] == faction:
-				income += GameData.CAPTURE_INCOME
+			if capture_owner[x][y] != faction:
+				continue
+			match terrain[x][y]:
+				GameData.Terrain.CAPTURE:
+					income += GameData.CAPTURE_INCOME
+				GameData.Terrain.RESOURCE:
+					income += randi_range(GameData.RESOURCE_INCOME_MIN, GameData.RESOURCE_INCOME_MAX)
 	gold[faction] += income
 	grid_renderer.set_grid(terrain, capture_owner)
 	_refresh_hud()
@@ -440,7 +465,7 @@ func _start_turn(faction: int) -> void:
 func _process_capture_for_faction(faction: int) -> void:
 	for x in range(GameData.GRID_COLS):
 		for y in range(GameData.GRID_ROWS):
-			if terrain[x][y] != GameData.Terrain.CAPTURE:
+			if not GameData.CAPTURABLE_TERRAIN.has(terrain[x][y]):
 				continue
 			var pos := Vector2i(x, y)
 			var occ := get_unit_at(pos)

@@ -14,8 +14,15 @@ const TERRAIN_COLOR := {
 	2: Color(0.5, 0.44, 0.32), # HILL
 	3: Color(0.18, 0.32, 0.55), # WATER
 	4: Color(0.42, 0.4, 0.2), # CAPTURE (base, tinted further by owner)
-	5: Color(0.15, 0.3, 0.6), # HQ_PLAYER
-	6: Color(0.55, 0.15, 0.15), # HQ_AI
+	5: Color(0.55, 0.5, 0.15), # RESOURCE (base, tinted further by owner)
+	6: Color(0.4, 0.26, 0.14), # BARRACKS (base, tinted further by owner)
+	7: Color(0.15, 0.3, 0.6), # HQ_PLAYER
+	8: Color(0.55, 0.15, 0.15), # HQ_AI
+}
+
+const OWNER_TINT := {
+	GameData.Faction.PLAYER: Color(0.2, 0.4, 0.75),
+	GameData.Faction.AI: Color(0.7, 0.25, 0.2),
 }
 
 func set_grid(p_terrain: Array, p_capture_owner: Array) -> void:
@@ -39,12 +46,10 @@ func _draw() -> void:
 		for y in range(GameData.GRID_ROWS):
 			var t: int = terrain[x][y]
 			var color: Color = TERRAIN_COLOR.get(t, Color.MAGENTA)
-			if t == GameData.Terrain.CAPTURE:
+			if GameData.CAPTURABLE_TERRAIN.has(t):
 				var owner: int = capture_owner[x][y]
-				if owner == GameData.Faction.PLAYER:
-					color = Color(0.2, 0.4, 0.75)
-				elif owner == GameData.Faction.AI:
-					color = Color(0.7, 0.25, 0.2)
+				if OWNER_TINT.has(owner):
+					color = color.lerp(OWNER_TINT[owner], 0.65)
 			var rect := Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts))
 			draw_rect(rect, color)
 			draw_rect(rect, Color(0, 0, 0, 0.25), false, 1.5)

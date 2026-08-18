@@ -17,8 +17,8 @@ static func take_turn(battle: Battle) -> void:
 		_act_unit(battle, u)
 
 static func _try_recruit(battle: Battle, faction: int) -> void:
-	var hq_tiles := battle.get_faction_hq_tiles(faction)
-	for pos in hq_tiles:
+	var recruit_tiles := battle.get_faction_recruit_tiles(faction)
+	for pos in recruit_tiles:
 		if battle.get_unit_at(pos) != null:
 			continue
 		var gold: int = battle.gold[faction]
