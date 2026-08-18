@@ -62,9 +62,10 @@ func _build_label() -> void:
 func _draw() -> void:
 	var r := GameData.TILE_SIZE * 0.34
 	var body_color: Color = GameData.UNIT_DEFS[unit_type]["color"]
+	var shape: String = GameData.UNIT_DEFS[unit_type].get("shape", "circle")
 	var ring_color := (Color(0.3, 0.55, 1.0) if faction == GameData.Faction.PLAYER else Color(0.9, 0.25, 0.25))
 	draw_circle(Vector2.ZERO, r + 4, ring_color)
-	draw_circle(Vector2.ZERO, r, body_color)
+	_draw_body_shape(shape, r, body_color)
 	if is_selected:
 		draw_arc(Vector2.ZERO, r + 9, 0, TAU, 32, Color(1, 1, 0.3), 3.0)
 	if flies:
@@ -77,6 +78,68 @@ func _draw() -> void:
 	var pct: float = clamp(hp / max_hp, 0.0, 1.0)
 	var hp_color := Color(0.3, 0.85, 0.3).lerp(Color(0.9, 0.2, 0.2), 1.0 - pct)
 	draw_rect(Rect2(bar_pos, Vector2(bar_w * pct, bar_h)), hp_color)
+
+## Each unit type gets a distinct geometric silhouette (no external art) so the
+## roster reads at a glance instead of everyone being the same colored dot.
+func _draw_body_shape(shape: String, r: float, color: Color) -> void:
+	match shape:
+		"square":
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(-r, -r), Vector2(r, -r), Vector2(r, r), Vector2(-r, r),
+			]), color)
+		"triangle":
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(0, -r), Vector2(r * 0.87, r * 0.5), Vector2(-r * 0.87, r * 0.5),
+			]), color)
+		"triangle_down":
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(0, r), Vector2(r * 0.87, -r * 0.5), Vector2(-r * 0.87, -r * 0.5),
+			]), color)
+		"diamond":
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(0, -r), Vector2(r, 0), Vector2(0, r), Vector2(-r, 0),
+			]), color)
+		"hexagon":
+			draw_colored_polygon(_regular_polygon(6, r), color)
+		"octagon":
+			draw_colored_polygon(_regular_polygon(8, r), color)
+		"star5":
+			draw_colored_polygon(_star_polygon(5, r, r * 0.45), color)
+		"star6":
+			draw_colored_polygon(_star_polygon(6, r, r * 0.5), color)
+		"cross":
+			draw_colored_polygon(_cross_polygon(r), color)
+		"chevron":
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(r, 0), Vector2(-r * 0.4, -r * 0.7), Vector2(-r * 0.1, 0), Vector2(-r * 0.4, r * 0.7),
+			]), color)
+		_:
+			draw_circle(Vector2.ZERO, r, color)
+
+func _regular_polygon(sides: int, radius: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(sides):
+		var angle := TAU * i / sides - PI / 2.0
+		pts.append(Vector2(cos(angle), sin(angle)) * radius)
+	return pts
+
+func _star_polygon(spikes: int, outer_r: float, inner_r: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var n := spikes * 2
+	for i in range(n):
+		var angle := TAU * i / n - PI / 2.0
+		var r := outer_r if i % 2 == 0 else inner_r
+		pts.append(Vector2(cos(angle), sin(angle)) * r)
+	return pts
+
+func _cross_polygon(radius: float) -> PackedVector2Array:
+	var a := radius * 0.35 # arm half-width
+	var b := radius # arm length
+	return PackedVector2Array([
+		Vector2(-a, -b), Vector2(a, -b), Vector2(a, -a), Vector2(b, -a),
+		Vector2(b, a), Vector2(a, a), Vector2(a, b), Vector2(-a, b),
+		Vector2(-a, a), Vector2(-b, a), Vector2(-b, -a), Vector2(-a, -a),
+	])
 
 func move_to(p_grid_pos: Vector2i) -> void:
 	grid_pos = p_grid_pos

@@ -25,6 +25,7 @@ var selected_unit: Unit = null
 var pending_move_options: Array[Vector2i] = []
 var pending_action_options: Array[Vector2i] = [] # enemies (attack) or allies (heal)
 var build_mode_active := false
+var build_mode_type: int = -1
 var game_over := false
 
 var grid_renderer: GridRenderer
@@ -61,7 +62,7 @@ func _ready() -> void:
 	hud.end_turn_requested.connect(_on_end_turn_requested)
 	hud.recruit_requested.connect(_on_recruit_requested)
 	hud.tech_requested.connect(_on_tech_requested)
-	hud.build_requested.connect(_on_build_requested)
+	hud.build_requested.connect(start_build_mode)
 	hud.build_cancelled.connect(cancel_build_mode)
 	hud.restart_requested.connect(_on_restart_requested)
 
@@ -270,7 +271,7 @@ func is_valid_build_tile(pos: Vector2i, anchors: Array[Vector2i]) -> bool:
 	if get_unit_at(pos) != null:
 		return false
 	for a in anchors:
-		if abs(a.x - pos.x) + abs(a.y - pos.y) <= GameData.BARRACKS_BUILD_RADIUS:
+		if abs(a.x - pos.x) + abs(a.y - pos.y) <= GameData.BUILD_RADIUS:
 			return true
 	return false
 
@@ -472,15 +473,17 @@ func _finish_unit_turn(u: Unit) -> void:
 
 # --- Build mode ---------------------------------------------------------------
 
-func start_build_mode() -> void:
+func start_build_mode(building_type: int) -> void:
 	if active_faction != GameData.Faction.PLAYER or game_over:
 		return
 	deselect()
 	build_mode_active = true
+	build_mode_type = building_type
 	grid_renderer.set_build_highlights(get_eligible_build_tiles(GameData.Faction.PLAYER))
 
 func cancel_build_mode() -> void:
 	build_mode_active = false
+	build_mode_type = -1
 	grid_renderer.clear_build_highlights()
 	hud.close_popups()
 
@@ -488,17 +491,15 @@ func _handle_build_tap(grid_pos: Vector2i) -> void:
 	var anchors := get_owned_anchor_tiles(GameData.Faction.PLAYER)
 	if not is_valid_build_tile(grid_pos, anchors):
 		return
-	if gold[GameData.Faction.PLAYER] < GameData.BARRACKS_BUILD_COST:
+	var cost: int = GameData.BUILDING_DEFS[build_mode_type]["cost"]
+	if gold[GameData.Faction.PLAYER] < cost:
 		return
-	gold[GameData.Faction.PLAYER] -= GameData.BARRACKS_BUILD_COST
-	terrain[grid_pos.x][grid_pos.y] = GameData.Terrain.BARRACKS
+	gold[GameData.Faction.PLAYER] -= cost
+	terrain[grid_pos.x][grid_pos.y] = build_mode_type
 	capture_owner[grid_pos.x][grid_pos.y] = GameData.Faction.PLAYER
 	grid_renderer.set_grid(terrain, capture_owner)
 	_refresh_hud()
 	cancel_build_mode()
-
-func _on_build_requested() -> void:
-	start_build_mode()
 
 # --- AI hooks (mirrors of the player actions above, no input required) -----
 
@@ -531,11 +532,12 @@ func ai_recruit(faction: int, type: int, pos: Vector2i) -> void:
 	gold[faction] -= cost
 	spawn_unit(type, faction, pos)
 
-func ai_build(faction: int, pos: Vector2i) -> void:
-	if gold[faction] < GameData.BARRACKS_BUILD_COST:
+func ai_build(faction: int, building_type: int, pos: Vector2i) -> void:
+	var cost: int = GameData.BUILDING_DEFS[building_type]["cost"]
+	if gold[faction] < cost:
 		return
-	gold[faction] -= GameData.BARRACKS_BUILD_COST
-	terrain[pos.x][pos.y] = GameData.Terrain.BARRACKS
+	gold[faction] -= cost
+	terrain[pos.x][pos.y] = building_type
 	capture_owner[pos.x][pos.y] = faction
 
 func _check_elimination_win() -> void:
@@ -633,6 +635,11 @@ func _start_turn(faction: int) -> void:
 	for u in units:
 		if u.faction == faction:
 			u.reset_turn_flags()
+
+	_process_watchtower_attacks(faction)
+	if game_over:
+		return
+
 	var income: int = GameData.HQ_INCOME
 	for x in range(GameData.GRID_COLS):
 		for y in range(GameData.GRID_ROWS):
@@ -643,6 +650,8 @@ func _start_turn(faction: int) -> void:
 					income += GameData.CAPTURE_INCOME
 				GameData.Terrain.RESOURCE:
 					income += randi_range(GameData.RESOURCE_INCOME_MIN, GameData.RESOURCE_INCOME_MAX)
+				GameData.Terrain.MARKET:
+					income += GameData.MARKET_INCOME
 	gold[faction] += income
 	grid_renderer.set_grid(terrain, capture_owner)
 	_refresh_hud()
@@ -651,6 +660,24 @@ func _start_turn(faction: int) -> void:
 		AIController.take_turn(self)
 		if not game_over:
 			_end_turn()
+
+## AoE-style tower auto-attack: every Watchtower the faction owns chips damage into
+## whichever enemy units are adjacent to it, at the start of that faction's turn.
+func _process_watchtower_attacks(faction: int) -> void:
+	for x in range(GameData.GRID_COLS):
+		for y in range(GameData.GRID_ROWS):
+			if terrain[x][y] != GameData.Terrain.WATCHTOWER or capture_owner[x][y] != faction:
+				continue
+			var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+			for d in dirs:
+				var p: Vector2i = Vector2i(x, y) + d
+				if not GameData.in_bounds(p):
+					continue
+				var target := get_unit_at(p)
+				if target != null and target.faction != faction:
+					if target.take_damage(GameData.WATCHTOWER_DAMAGE):
+						remove_unit(target)
+	_check_elimination_win()
 
 func _process_capture_for_faction(faction: int) -> void:
 	for x in range(GameData.GRID_COLS):
@@ -677,4 +704,4 @@ func _refresh_hud() -> void:
 	hud.set_turn_label(active_faction)
 	hud.refresh_recruit_buttons(gold[GameData.Faction.PLAYER])
 	hud.refresh_tech_buttons(faction_bonuses[GameData.Faction.PLAYER]["techs"], gold[GameData.Faction.PLAYER])
-	hud.refresh_build_button(gold[GameData.Faction.PLAYER])
+	hud.refresh_build_buttons(gold[GameData.Faction.PLAYER])

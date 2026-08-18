@@ -21,14 +21,18 @@ static func take_turn(battle: Battle) -> void:
 			_act_unit(battle, u)
 
 static func _try_build(battle: Battle, faction: int) -> void:
-	if battle.gold[faction] < GameData.BARRACKS_BUILD_COST + 150:
-		return
-	if randf() > 0.35:
+	var building_types: Array = GameData.BUILDING_DEFS.keys()
+	var affordable: Array = []
+	for t in building_types:
+		if battle.gold[faction] >= GameData.BUILDING_DEFS[t]["cost"] + 150:
+			affordable.append(t)
+	if affordable.is_empty() or randf() > 0.35:
 		return
 	var eligible := battle.get_eligible_build_tiles(faction)
 	if eligible.is_empty():
 		return
-	battle.ai_build(faction, eligible[randi() % eligible.size()])
+	var building_type: int = affordable[randi() % affordable.size()]
+	battle.ai_build(faction, building_type, eligible[randi() % eligible.size()])
 
 static func _try_recruit(battle: Battle, faction: int) -> void:
 	var recruit_tiles := battle.get_faction_recruit_tiles(faction)

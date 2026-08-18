@@ -12,11 +12,19 @@ eras into one grid battle:
   **Resource Deposits** (a variable, randomized gold/turn — some turns are a
   windfall, some are lean, so holding several evens out the swings) to fund
   your army.
-- **Base building** (Clash of Clans / RTS production buildings) — spend gold
-  to **construct a Barracks** on any empty tile near your territory (not just
-  capture pre-placed ones), giving you a forward recruiting point closer to
-  the front line. A handful of special neutral Barracks are still scattered
-  deep in no-man's-land, pre-built and only takeable by capturing them — a
+- **Base building** (Age of Empires / Clash of Clans-style construction) —
+  spend gold to construct buildings on any empty tile near your territory,
+  each filling a different classic-RTS role:
+  - **Barracks** (Troops) — an extra recruiting point closer to the front
+    line, so reinforcements don't have to march all the way from your HQ.
+  - **Market** (Income) — steady, guaranteed passive gold every turn; safer
+    than fighting over a Resource Deposit, but the payout is fixed and lower.
+  - **Watchtower** (Defense) — an AoE-style auto-attacking tower: it chips
+    damage into any adjacent enemy unit at the start of your turn, no action
+    required, and gives whoever garrisons it a strong defense bonus.
+
+  A handful of special neutral Barracks are still scattered deep in
+  no-man's-land, pre-built and only takeable by capturing them — a
   worthwhile, contested prize distinct from the ones you build yourself.
 - **Tech tree, lite** (Civilization / 4X) — spend gold on one-time research
   (Logistics, Armor Plating, Weaponry) that permanently upgrades your whole
@@ -33,21 +41,29 @@ sidebar UI stays fixed regardless of where you've scrolled.
 
 ### Unit roster (10 types)
 
-| Unit | Role |
-|---|---|
-| Infantry | Balanced core unit; strong vs Cavalry |
-| Cavalry | Fast striker; strong vs Ranged, weak vs Infantry |
-| Ranged | Backline attacker; strong vs Infantry, weak vs Cavalry |
-| Siege | Slow indirect-fire (can't hit adjacent tiles), heavy damage |
-| Scout | Cheap and very fast, for map/economy control rather than fighting |
-| Marksman | Long-range specialist; strong vs Siege and Skyraider |
-| Juggernaut | Heavy armor; strong vs Infantry/Scout, weak vs Siege |
-| Skyraider | Flying — ignores terrain movement cost, crosses water/forest/hills freely; strong vs Siege/Juggernaut, weak vs Marksman |
-| Medic | No attack — heals an adjacent damaged ally instead |
-| Commander | Expensive elite unit, a flat combat edge against everything |
+Every unit gets its own procedurally-drawn silhouette (no external art) so
+the roster reads at a glance instead of everyone being the same dot:
+
+| Unit | Shape | Role |
+|---|---|---|
+| Infantry | circle | Balanced core unit; strong vs Cavalry |
+| Cavalry | triangle | Fast striker; strong vs Ranged, weak vs Infantry |
+| Ranged | diamond | Backline attacker; strong vs Infantry, weak vs Cavalry |
+| Siege | hexagon | Slow indirect-fire (can't hit adjacent tiles), heavy damage |
+| Scout | chevron | Cheap and very fast, for map/economy control rather than fighting |
+| Marksman | 5-point star | Long-range specialist; strong vs Siege and Skyraider |
+| Juggernaut | octagon | Heavy armor; strong vs Infantry/Scout, weak vs Siege |
+| Skyraider | downward triangle | Flying — ignores terrain movement cost, crosses water/forest/hills freely; strong vs Siege/Juggernaut, weak vs Marksman |
+| Medic | cross | No attack — heals an adjacent damaged ally instead |
+| Commander | 6-point star | Expensive elite unit, a flat combat edge against everything |
+
+Each unit's Recruit-panel entry also shows a one-line explanation of its
+role, and every tile on the map has an entry in the in-game **Legend** panel
+(sidebar) explaining its effect — move cost, defense bonus, and what
+capturing or building on it does.
 
 No external art or audio assets — everything is drawn procedurally at
-runtime (circles, rectangles, colors), matching this repo's existing
+runtime (circles, polygons, colors), matching this repo's existing
 "generated, not asset-based" philosophy. Built in [Godot 4.3](https://godotengine.org/).
 
 ## Play it on your phone
@@ -94,10 +110,14 @@ godot --path strategy-game
   a pan, never as a tap-action, so scrolling never accidentally selects or
   moves a unit.
 - **Recruit** panel (sidebar): spend gold to add a new unit at your HQ, or at
-  any Barracks you control.
-- **Build** panel (sidebar): spend gold to construct a new Barracks on an
-  eligible tile (highlighted white) near your territory.
+  any Barracks you control — each entry shows a one-line explanation of the
+  unit's role.
+- **Build** panel (sidebar): spend gold to construct a Barracks (Troops),
+  Market (Income), or Watchtower (Defense) on an eligible tile (highlighted
+  white) near your territory — each option shows what it does.
 - **Tech** panel (sidebar): spend gold on a one-time army-wide upgrade.
+- **Legend** panel (sidebar): every terrain type's color, name, and a
+  one-line explanation of its effect.
 - **End Turn**: hands control to the AI, which recruits, builds, heals,
   advances on capture points/resources, and attacks when it can. Control
   returns to you automatically afterward.
@@ -136,12 +156,16 @@ This is a first playable slice, not the final game. Known simplifications:
 - No fog of war, no multiplayer — both are natural next additions given the
   systems already in place (grid state and turn flow are already fully
   separated from rendering/input).
-- Built Barracks currently produce the full unit roster, same as HQ; a
-  natural next step is limiting what each production building can build
-  (e.g. a Barracks vs. an Airfield vs. a Workshop).
+- Barracks (built or captured) all produce the full unit roster; a natural
+  next step is specializing production buildings by unit category (e.g. an
+  Airfield for Skyraiders only, a Stable for Cavalry/Scouts).
 - No pinch-to-zoom on the camera, only pan — the map is sized so the base
   zoom level keeps units readable, but a zoom-out overview would help
   orientation on a map this size.
+- Only 3 building types (Barracks/Market/Watchtower); more Age of
+  Empires-style buildings (walls, a wonder/victory-condition building, a
+  unit that gathers resources rather than every building passively
+  generating them) would deepen the economy layer further.
 
 ## Testing notes
 

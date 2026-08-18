@@ -10,18 +10,6 @@ var action_highlights: Array[Vector2i] = []
 var action_is_heal := false
 var build_highlights: Array[Vector2i] = []
 
-const TERRAIN_COLOR := {
-	0: Color(0.32, 0.45, 0.28), # PLAIN
-	1: Color(0.16, 0.32, 0.18), # FOREST
-	2: Color(0.5, 0.44, 0.32), # HILL
-	3: Color(0.18, 0.32, 0.55), # WATER
-	4: Color(0.42, 0.4, 0.2), # CAPTURE (base, tinted further by owner)
-	5: Color(0.55, 0.5, 0.15), # RESOURCE (base, tinted further by owner)
-	6: Color(0.4, 0.26, 0.14), # BARRACKS (base, tinted further by owner)
-	7: Color(0.15, 0.3, 0.6), # HQ_PLAYER
-	8: Color(0.55, 0.15, 0.15), # HQ_AI
-}
-
 const OWNER_TINT := {
 	GameData.Faction.PLAYER: Color(0.2, 0.4, 0.75),
 	GameData.Faction.AI: Color(0.7, 0.25, 0.2),
@@ -56,7 +44,7 @@ func _draw() -> void:
 	for x in range(GameData.GRID_COLS):
 		for y in range(GameData.GRID_ROWS):
 			var t: int = terrain[x][y]
-			var color: Color = TERRAIN_COLOR.get(t, Color.MAGENTA)
+			var color: Color = GameData.TERRAIN_COLOR.get(t, Color.MAGENTA)
 			if GameData.CAPTURABLE_TERRAIN.has(t):
 				var owner: int = capture_owner[x][y]
 				if OWNER_TINT.has(owner):
