@@ -21,6 +21,8 @@ var range_max: int
 var has_moved := false
 var has_acted := false
 var is_selected := false
+var flies := false
+var is_healer := false
 
 var _label: Label
 
@@ -39,6 +41,8 @@ func setup(p_type: int, p_faction: int, p_grid_pos: Vector2i, bonuses: Dictionar
 	move_range = def["move"] + move_bonus
 	range_min = def["range_min"]
 	range_max = def["range_max"]
+	flies = def.get("flies", false)
+	is_healer = def.get("role", "attack") == "heal"
 	position = GameData.grid_to_world(grid_pos)
 	z_index = 10
 	_build_label()
@@ -63,6 +67,8 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, r, body_color)
 	if is_selected:
 		draw_arc(Vector2.ZERO, r + 9, 0, TAU, 32, Color(1, 1, 0.3), 3.0)
+	if flies:
+		draw_arc(Vector2.ZERO, r + 6, 0, TAU, 24, Color(1, 1, 1, 0.8), 1.5)
 	# HP bar
 	var bar_w := GameData.TILE_SIZE * 0.7
 	var bar_h := 6.0
@@ -83,6 +89,10 @@ func take_damage(amount: float) -> bool:
 		died.emit(self)
 		return true
 	return false
+
+func heal(amount: float) -> void:
+	hp = min(max_hp, hp + amount)
+	queue_redraw()
 
 func reset_turn_flags() -> void:
 	has_moved = false

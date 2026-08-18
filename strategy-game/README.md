@@ -4,29 +4,47 @@ A mobile strategy game that blends the core loops of several strategy-game
 eras into one grid battle:
 
 - **Tactical grid combat** (Advance Wars / Into the Breach) — the core loop.
-  Move on a grid, fight with a rock-paper-scissors unit matchup system
-  (Infantry beats Cavalry, Cavalry beats Ranged, Ranged beats Infantry,
-  Siege is a slow high-damage indirect-fire unit that's weak to Cavalry
-  rushes), and terrain gives real defense bonuses (forest, hills).
+  Move on a grid, fight with a rock-paper-scissors unit matchup system across
+  a 10-unit roster (see below), and terrain gives real defense bonuses
+  (forest, hills).
 - **Territory capture & economy** (Command & Conquer-style control points /
   Advance Wars properties) — capture **Capture Points** (fixed gold/turn) and
   **Resource Deposits** (a variable, randomized gold/turn — some turns are a
   windfall, some are lean, so holding several evens out the swings) to fund
   your army.
-- **Base building, lite** (Clash of Clans / RTS production buildings) —
-  recruit new units at your HQ, or at any **Barracks** you've captured out on
-  the map — inspired by Advance Wars factories and C&C war factories, extra
-  Barracks are worth fighting over since they let you reinforce closer to
-  the front line instead of marching everything from your HQ.
+- **Base building** (Clash of Clans / RTS production buildings) — spend gold
+  to **construct a Barracks** on any empty tile near your territory (not just
+  capture pre-placed ones), giving you a forward recruiting point closer to
+  the front line. A handful of special neutral Barracks are still scattered
+  deep in no-man's-land, pre-built and only takeable by capturing them — a
+  worthwhile, contested prize distinct from the ones you build yourself.
 - **Tech tree, lite** (Civilization / 4X) — spend gold on one-time research
   (Logistics, Armor Plating, Weaponry) that permanently upgrades your whole
   army for the rest of the match.
 - **Win conditions** — eliminate the enemy army, or march a unit onto the
   enemy HQ for an instant win (Advance Wars-style HQ capture).
 
-The map is 16x12 tiles with 6 starting units per side (up from an initial
-12x8 / 4-unit prototype), symmetric buildings on both flanks, and a central
-no-man's-land of forest/hill/water terrain to fight over.
+The map is 36x24 tiles (up from an initial 12x8 prototype) — big enough that
+first contact between armies takes several turns, so there's real time to
+build up an economy and a second wave of units before the fighting starts,
+and reinforcements from a Barracks can reach an ongoing fight. The camera
+pans (drag to scroll) since the whole map doesn't fit on one screen; the
+sidebar UI stays fixed regardless of where you've scrolled.
+
+### Unit roster (10 types)
+
+| Unit | Role |
+|---|---|
+| Infantry | Balanced core unit; strong vs Cavalry |
+| Cavalry | Fast striker; strong vs Ranged, weak vs Infantry |
+| Ranged | Backline attacker; strong vs Infantry, weak vs Cavalry |
+| Siege | Slow indirect-fire (can't hit adjacent tiles), heavy damage |
+| Scout | Cheap and very fast, for map/economy control rather than fighting |
+| Marksman | Long-range specialist; strong vs Siege and Skyraider |
+| Juggernaut | Heavy armor; strong vs Infantry/Scout, weak vs Siege |
+| Skyraider | Flying — ignores terrain movement cost, crosses water/forest/hills freely; strong vs Siege/Juggernaut, weak vs Marksman |
+| Medic | No attack — heals an adjacent damaged ally instead |
+| Commander | Expensive elite unit, a flat combat edge against everything |
 
 No external art or audio assets — everything is drawn procedurally at
 runtime (circles, rectangles, colors), matching this repo's existing
@@ -65,17 +83,24 @@ godot --path strategy-game
 
 ## Controls
 
-- Tap one of your units to select it — reachable tiles highlight blue.
-- Tap a highlighted tile to move there (or tap the unit's own tile to stay
-  put) — tiles you can attack from your new position highlight red.
-- Tap a red-highlighted enemy to attack, or tap anywhere else to skip the
-  attack and end that unit's turn.
+- Tap one of your units to select it — reachable tiles highlight blue, and
+  any enemy already in range highlights red immediately (tap it to attack in
+  place, no need to move first). For a Medic, damaged allies in range
+  highlight green instead — tap one to heal instead of attack.
+- Tap a highlighted blue tile to move there (or tap the unit's own tile to
+  stay put) — attackable/healable tiles from the new position highlight
+  next; tap one, or tap anywhere else to skip and end that unit's turn.
+- **Drag** anywhere on the map to pan the camera — a drag is only treated as
+  a pan, never as a tap-action, so scrolling never accidentally selects or
+  moves a unit.
 - **Recruit** panel (sidebar): spend gold to add a new unit at your HQ, or at
   any Barracks you control.
+- **Build** panel (sidebar): spend gold to construct a new Barracks on an
+  eligible tile (highlighted white) near your territory.
 - **Tech** panel (sidebar): spend gold on a one-time army-wide upgrade.
-- **End Turn**: hands control to the AI, which recruits, advances on
-  capture points, and attacks when it can. Control returns to you
-  automatically afterward.
+- **End Turn**: hands control to the AI, which recruits, builds, heals,
+  advances on capture points/resources, and attacks when it can. Control
+  returns to you automatically afterward.
 
 ## Project structure
 
@@ -104,28 +129,48 @@ empty root node with a script attached).
 ## Design notes / what's intentionally MVP-scope
 
 This is a first playable slice, not the final game. Known simplifications:
-- Single hand-authored skirmish map (no map selection, no campaign yet).
+- The map layout is procedurally generated but from a **fixed seed**, so
+  it's the same map every match (deterministic, for balance/testability) -
+  randomizing it per match would be a small change.
 - One AI difficulty (heuristic, not adaptive).
 - No fog of war, no multiplayer — both are natural next additions given the
   systems already in place (grid state and turn flow are already fully
   separated from rendering/input).
-- Unit roster is 4 types; more types (e.g., a scout/vision unit, an
-  anti-siege unit) would deepen the counter-play.
-- Buildings are currently 2 types (Resource Deposit, Barracks) captured the
-  same way as Capture Points; a natural next step is giving Barracks a
-  build queue / limited unit-type specialization instead of producing the
-  full roster.
+- Built Barracks currently produce the full unit roster, same as HQ; a
+  natural next step is limiting what each production building can build
+  (e.g. a Barracks vs. an Airfield vs. a Workshop).
+- No pinch-to-zoom on the camera, only pan — the map is sized so the base
+  zoom level keeps units readable, but a zoom-out overview would help
+  orientation on a map this size.
 
 ## Testing notes
 
 Every script here was compiled and exercised headlessly with Godot's
 `--headless` mode during development (grid pathfinding, combat resolution,
-capture ticking, tech purchase, recruiting, and a full AI turn cycle were
-all run and asserted against, not just eyeballed). The map/buildings update
-was additionally verified with an actual rendered frame (Xvfb + software
-GL, screenshotted) to catch draw-time errors headless mode can't reach, and
-a real touch-input bug — Godot's default touch↔mouse emulation was causing
-every tap to fire twice, silently auto-completing a unit's turn right after
-selection — was found from real device testing and fixed (both emulation
-directions are now disabled in `project.godot`; each real touch or mouse
-click fires exactly once). Still not tested in the Godot editor GUI itself.
+capture ticking, tech purchase, recruiting, and full AI turn cycles were
+run and checked, not just eyeballed). Two real bugs were found from actual
+device/browser testing and are worth calling out because of how they were
+found and fixed:
+
+1. **Touch double-fire**: Godot's default touch↔mouse emulation caused
+   every real tap to fire twice (once as a touch event, once as a
+   synthesized mouse event at the same position), silently advancing the
+   turn state machine twice per tap. Fixed by disabling both emulation
+   directions in `project.godot`.
+2. **Attack-in-place gap**: selecting a unit and tapping an already-adjacent
+   enemy directly (without first confirming a move) silently deselected
+   instead of attacking, because the state machine required a redundant
+   "confirm position" tap before attack options were ever computed. Fixed
+   by computing and highlighting in-range targets immediately on selection.
+
+Both are exactly the class of bug that's invisible to a headless test that
+only calls internal functions directly — the bug lives in the input-event
+pipeline itself. After finding that gap, the test approach changed to
+**drive the game through real simulated input events**
+(`Viewport.push_input()` with actual `InputEventScreenTouch` /
+`InputEventScreenDrag` objects, run under Xvfb with real rendering rather
+than pure `--headless`, since a real Camera2D/viewport is needed for the
+screen↔world coordinate math to behave like it does on a real device) for
+select/move/attack/heal/build/drag-pan, rather than only asserting on
+internal state after calling functions directly. Still not tested in the
+Godot editor GUI itself or on physical hardware.

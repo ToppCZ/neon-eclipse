@@ -6,7 +6,9 @@ class_name GridRenderer
 var terrain: Array = [] # [x][y] -> GameData.Terrain
 var capture_owner: Array = [] # [x][y] -> -1 (neutral) / Faction
 var move_highlights: Array[Vector2i] = []
-var attack_highlights: Array[Vector2i] = []
+var action_highlights: Array[Vector2i] = []
+var action_is_heal := false
+var build_highlights: Array[Vector2i] = []
 
 const TERRAIN_COLOR := {
 	0: Color(0.32, 0.45, 0.28), # PLAIN
@@ -30,14 +32,23 @@ func set_grid(p_terrain: Array, p_capture_owner: Array) -> void:
 	capture_owner = p_capture_owner
 	queue_redraw()
 
-func set_highlights(moves: Array[Vector2i], attacks: Array[Vector2i]) -> void:
+func set_highlights(moves: Array[Vector2i], actions: Array[Vector2i], is_heal: bool = false) -> void:
 	move_highlights = moves
-	attack_highlights = attacks
+	action_highlights = actions
+	action_is_heal = is_heal
 	queue_redraw()
 
 func clear_highlights() -> void:
 	move_highlights.clear()
-	attack_highlights.clear()
+	action_highlights.clear()
+	queue_redraw()
+
+func set_build_highlights(tiles: Array[Vector2i]) -> void:
+	build_highlights = tiles
+	queue_redraw()
+
+func clear_build_highlights() -> void:
+	build_highlights.clear()
 	queue_redraw()
 
 func _draw() -> void:
@@ -56,6 +67,11 @@ func _draw() -> void:
 	for pos in move_highlights:
 		var rect := Rect2(Vector2(pos.x * ts, pos.y * ts), Vector2(ts, ts))
 		draw_rect(rect, Color(0.3, 0.6, 1.0, 0.35))
-	for pos in attack_highlights:
+	var action_color := Color(0.3, 0.95, 0.4, 0.45) if action_is_heal else Color(1.0, 0.25, 0.2, 0.4)
+	for pos in action_highlights:
 		var rect := Rect2(Vector2(pos.x * ts, pos.y * ts), Vector2(ts, ts))
-		draw_rect(rect, Color(1.0, 0.25, 0.2, 0.4))
+		draw_rect(rect, action_color)
+	for pos in build_highlights:
+		var rect := Rect2(Vector2(pos.x * ts, pos.y * ts), Vector2(ts, ts))
+		draw_rect(rect, Color(1.0, 1.0, 1.0, 0.3))
+		draw_rect(rect, Color(1.0, 1.0, 1.0, 0.8), false, 2.0)

@@ -7,6 +7,7 @@ class_name AIController
 static func take_turn(battle: Battle) -> void:
 	var faction: int = GameData.Faction.AI
 	_try_recruit(battle, faction)
+	_try_build(battle, faction)
 	var ai_units: Array = []
 	for u in battle.units:
 		if u.faction == faction:
@@ -14,7 +15,20 @@ static func take_turn(battle: Battle) -> void:
 	for u in ai_units:
 		if not is_instance_valid(u) or u.hp <= 0.0:
 			continue
-		_act_unit(battle, u)
+		if u.is_healer:
+			_act_healer(battle, u)
+		else:
+			_act_unit(battle, u)
+
+static func _try_build(battle: Battle, faction: int) -> void:
+	if battle.gold[faction] < GameData.BARRACKS_BUILD_COST + 150:
+		return
+	if randf() > 0.35:
+		return
+	var eligible := battle.get_eligible_build_tiles(faction)
+	if eligible.is_empty():
+		return
+	battle.ai_build(faction, eligible[randi() % eligible.size()])
 
 static func _try_recruit(battle: Battle, faction: int) -> void:
 	var recruit_tiles := battle.get_faction_recruit_tiles(faction)
@@ -56,6 +70,34 @@ static func _act_unit(battle: Battle, u: Unit) -> void:
 	if best_target != null:
 		battle.ai_move_unit(u, best_move)
 		battle.ai_attack(u, best_target)
+		return
+
+	var goal: Variant = battle.find_ai_move_goal(u)
+	if goal != null:
+		var closest := _closest_reachable_toward(reachable, goal)
+		battle.ai_move_unit(u, closest)
+	battle.ai_finish_unit(u)
+
+static func _act_healer(battle: Battle, u: Unit) -> void:
+	var reachable: Array[Vector2i] = battle.compute_reachable(u)
+	var target: Unit = battle.find_nearest_hurt_ally(u)
+
+	if target != null:
+		var best_move := Vector2i(-1, -1)
+		var best_dist := 999999
+		for pos in reachable:
+			if battle.compute_action_targets(u, pos).has(target.grid_pos):
+				var d: int = abs(pos.x - u.grid_pos.x) + abs(pos.y - u.grid_pos.y)
+				if d < best_dist:
+					best_dist = d
+					best_move = pos
+		if best_move.x != -1:
+			battle.ai_move_unit(u, best_move)
+			battle.ai_heal(u, target)
+			return
+		var closer := _closest_reachable_toward(reachable, target.grid_pos)
+		battle.ai_move_unit(u, closer)
+		battle.ai_finish_unit(u)
 		return
 
 	var goal: Variant = battle.find_ai_move_goal(u)
