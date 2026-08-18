@@ -10,6 +10,11 @@ var unit_type: int
 var faction: int
 var grid_pos: Vector2i
 
+var base_hp: float
+var base_atk: float
+var base_def: float
+var base_move: int
+
 var max_hp: float
 var hp: float
 var atk: float
@@ -17,6 +22,7 @@ var def_stat: float
 var move_range: int
 var range_min: int
 var range_max: int
+var vision_range: int
 
 var has_moved := false
 var has_acted := false
@@ -24,27 +30,35 @@ var is_selected := false
 var flies := false
 var is_healer := false
 
+## Veterancy: units get stronger the more kills they rack up, like Advance Wars/XCOM-style
+## unit experience, instead of every unit staying identical for the whole match.
+var kills := 0
+var rank := 0
+const RANK_NAMES := ["", "Veteran", "Elite"]
+const RANK_KILLS := [0, 2, 5]
+const RANK_BONUS := [0.0, 0.10, 0.20]
+const RANK_COLOR := Color(1.0, 0.85, 0.2)
+
 var _label: Label
+var _move_tween: Tween
 
 func setup(p_type: int, p_faction: int, p_grid_pos: Vector2i, bonuses: Dictionary) -> void:
 	unit_type = p_type
 	faction = p_faction
 	grid_pos = p_grid_pos
 	var def: Dictionary = GameData.UNIT_DEFS[p_type]
-	var hp_mult: float = 1.0 + bonuses.get("hp_mult", 0.0)
-	var atk_mult: float = 1.0 + bonuses.get("atk_mult", 0.0)
-	var move_bonus: int = bonuses.get("move_bonus", 0)
-	max_hp = def["hp"] * hp_mult
-	hp = max_hp
-	atk = def["atk"] * atk_mult
-	def_stat = def["def"]
-	move_range = def["move"] + move_bonus
+	base_hp = def["hp"]
+	base_atk = def["atk"]
+	base_def = def["def"]
+	base_move = def["move"]
 	range_min = def["range_min"]
 	range_max = def["range_max"]
+	vision_range = def.get("vision", 3)
 	flies = def.get("flies", false)
 	is_healer = def.get("role", "attack") == "heal"
 	position = GameData.grid_to_world(grid_pos)
 	z_index = 10
+	refresh_stats(bonuses, true)
 	_build_label()
 	queue_redraw()
 
@@ -58,6 +72,27 @@ func _build_label() -> void:
 	_label.size = Vector2(GameData.TILE_SIZE, GameData.TILE_SIZE)
 	_label.position = Vector2(-GameData.TILE_SIZE / 2.0, -GameData.TILE_SIZE / 2.0)
 	add_child(_label)
+
+## Recomputes effective stats from base stats + faction tech bonuses + veterancy rank.
+## Called on setup, whenever tech is researched, and whenever this unit ranks up - keeping
+## stat computation in one place instead of duplicated between Unit and Battle.
+func refresh_stats(bonuses: Dictionary, full_heal: bool = false) -> void:
+	var hp_ratio: float = 1.0 if full_heal else (hp / max_hp if max_hp > 0.0 else 1.0)
+	var rank_mult: float = 1.0 + RANK_BONUS[rank]
+	max_hp = base_hp * (1.0 + bonuses.get("hp_mult", 0.0)) * rank_mult
+	hp = max_hp * hp_ratio
+	atk = base_atk * (1.0 + bonuses.get("atk_mult", 0.0)) * rank_mult
+	def_stat = base_def * rank_mult
+	move_range = base_move + bonuses.get("move_bonus", 0)
+	queue_redraw()
+
+func register_kill(bonuses: Dictionary) -> void:
+	kills += 1
+	for i in range(RANK_KILLS.size() - 1, -1, -1):
+		if kills >= RANK_KILLS[i] and rank < i:
+			rank = i
+			refresh_stats(bonuses)
+			break
 
 func _draw() -> void:
 	var r := GameData.TILE_SIZE * 0.34
@@ -78,6 +113,12 @@ func _draw() -> void:
 	var pct: float = clamp(hp / max_hp, 0.0, 1.0)
 	var hp_color := Color(0.3, 0.85, 0.3).lerp(Color(0.9, 0.2, 0.2), 1.0 - pct)
 	draw_rect(Rect2(bar_pos, Vector2(bar_w * pct, bar_h)), hp_color)
+	# Rank chevrons: one small upward chevron per rank, below the HP bar.
+	for i in range(rank):
+		var cy: float = bar_pos.y + bar_h + 5 + i * 5
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-5, cy + 3), Vector2(0, cy), Vector2(5, cy + 3), Vector2(0, cy + 2),
+		]), RANK_COLOR)
 
 ## Each unit type gets a distinct geometric silhouette (no external art) so the
 ## roster reads at a glance instead of everyone being the same colored dot.
@@ -141,21 +182,37 @@ func _cross_polygon(radius: float) -> PackedVector2Array:
 		Vector2(-a, a), Vector2(-b, a), Vector2(-b, -a), Vector2(-a, -a),
 	])
 
+## Logic (grid_pos, used by all pathfinding/targeting) updates instantly; the visual
+## position eases into place afterward so units glide instead of teleporting.
 func move_to(p_grid_pos: Vector2i) -> void:
 	grid_pos = p_grid_pos
-	position = GameData.grid_to_world(grid_pos)
+	var target := GameData.grid_to_world(grid_pos)
+	if _move_tween != null and _move_tween.is_valid():
+		_move_tween.kill()
+	_move_tween = create_tween()
+	_move_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_move_tween.tween_property(self, "position", target, 0.22)
 
 func take_damage(amount: float) -> bool:
 	hp = max(0.0, hp - amount)
 	queue_redraw()
+	_flash_hit()
 	if hp <= 0.0:
 		died.emit(self)
 		return true
 	return false
 
+func _flash_hit() -> void:
+	var tween := create_tween()
+	modulate = Color(1.6, 0.5, 0.5)
+	tween.tween_property(self, "modulate", Color(1, 1, 1), 0.22)
+
 func heal(amount: float) -> void:
 	hp = min(max_hp, hp + amount)
 	queue_redraw()
+	var tween := create_tween()
+	modulate = Color(0.6, 1.6, 0.7)
+	tween.tween_property(self, "modulate", Color(1, 1, 1), 0.22)
 
 func reset_turn_flags() -> void:
 	has_moved = false

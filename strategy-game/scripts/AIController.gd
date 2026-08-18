@@ -12,13 +12,15 @@ static func take_turn(battle: Battle) -> void:
 	for u in battle.units:
 		if u.faction == faction:
 			ai_units.append(u)
+	# Computed once for the whole turn rather than once per unit - a full grid scan.
+	var uncaptured_tiles := battle.get_uncaptured_capturable_tiles(faction)
 	for u in ai_units:
 		if not is_instance_valid(u) or u.hp <= 0.0:
 			continue
 		if u.is_healer:
-			_act_healer(battle, u)
+			_act_healer(battle, u, uncaptured_tiles)
 		else:
-			_act_unit(battle, u)
+			_act_unit(battle, u, uncaptured_tiles)
 
 static func _try_build(battle: Battle, faction: int) -> void:
 	var building_types: Array = GameData.BUILDING_DEFS.keys()
@@ -51,7 +53,7 @@ static func _try_recruit(battle: Battle, faction: int) -> void:
 			continue
 		battle.ai_recruit(faction, best_type, pos)
 
-static func _act_unit(battle: Battle, u: Unit) -> void:
+static func _act_unit(battle: Battle, u: Unit, uncaptured_tiles: Array[Vector2i]) -> void:
 	var reachable: Array[Vector2i] = battle.compute_reachable(u)
 	var best_score := -INF
 	var best_move: Vector2i = u.grid_pos
@@ -76,13 +78,13 @@ static func _act_unit(battle: Battle, u: Unit) -> void:
 		battle.ai_attack(u, best_target)
 		return
 
-	var goal: Variant = battle.find_ai_move_goal(u)
+	var goal: Variant = battle.find_ai_move_goal(u, uncaptured_tiles)
 	if goal != null:
 		var closest := _closest_reachable_toward(reachable, goal)
 		battle.ai_move_unit(u, closest)
 	battle.ai_finish_unit(u)
 
-static func _act_healer(battle: Battle, u: Unit) -> void:
+static func _act_healer(battle: Battle, u: Unit, uncaptured_tiles: Array[Vector2i]) -> void:
 	var reachable: Array[Vector2i] = battle.compute_reachable(u)
 	var target: Unit = battle.find_nearest_hurt_ally(u)
 
@@ -104,7 +106,7 @@ static func _act_healer(battle: Battle, u: Unit) -> void:
 		battle.ai_finish_unit(u)
 		return
 
-	var goal: Variant = battle.find_ai_move_goal(u)
+	var goal: Variant = battle.find_ai_move_goal(u, uncaptured_tiles)
 	if goal != null:
 		var closest := _closest_reachable_toward(reachable, goal)
 		battle.ai_move_unit(u, closest)

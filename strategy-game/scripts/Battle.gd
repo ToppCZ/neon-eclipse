@@ -9,6 +9,8 @@ var terrain: Array = [] # [x][y] -> GameData.Terrain
 var capture_owner: Array = [] # [x][y] -> -1 / Faction
 var capture_contest: Array = [] # [x][y] -> -1 / Faction
 var capture_progress: Array = [] # [x][y] -> int ticks remaining
+var player_visible: Array = [] # [x][y] -> bool, fog of war (player perspective only)
+var player_explored: Array = [] # [x][y] -> bool
 
 var units: Array[Unit] = []
 var unit_at: Dictionary = {} # Vector2i -> Unit
@@ -30,6 +32,7 @@ var game_over := false
 
 var grid_renderer: GridRenderer
 var units_layer: Node2D
+var fx_layer: Node2D
 var hud: HUD
 var camera: Camera2D
 
@@ -53,6 +56,9 @@ func _ready() -> void:
 	units_layer = Node2D.new()
 	add_child(units_layer)
 
+	fx_layer = Node2D.new()
+	add_child(fx_layer)
+
 	camera = Camera2D.new()
 	camera.position_smoothing_enabled = false
 	add_child(camera)
@@ -65,10 +71,12 @@ func _ready() -> void:
 	hud.build_requested.connect(start_build_mode)
 	hud.build_cancelled.connect(cancel_build_mode)
 	hud.restart_requested.connect(_on_restart_requested)
+	hud.minimap.jump_requested.connect(_on_minimap_jump_requested)
 
 	_spawn_starting_units()
 	camera.position = GameData.grid_to_world(Vector2i(HQ_DEPTH + 3, GameData.GRID_ROWS / 2))
 	_clamp_camera()
+	_recompute_player_visibility()
 	_start_turn(active_faction)
 
 # --- Map generation ----------------------------------------------------------
@@ -78,20 +86,28 @@ func _generate_map() -> void:
 	capture_owner.resize(GameData.GRID_COLS)
 	capture_contest.resize(GameData.GRID_COLS)
 	capture_progress.resize(GameData.GRID_COLS)
+	player_visible.resize(GameData.GRID_COLS)
+	player_explored.resize(GameData.GRID_COLS)
 	for x in range(GameData.GRID_COLS):
 		terrain[x] = []
 		capture_owner[x] = []
 		capture_contest[x] = []
 		capture_progress[x] = []
+		player_visible[x] = []
+		player_explored[x] = []
 		terrain[x].resize(GameData.GRID_ROWS)
 		capture_owner[x].resize(GameData.GRID_ROWS)
 		capture_contest[x].resize(GameData.GRID_ROWS)
 		capture_progress[x].resize(GameData.GRID_ROWS)
+		player_visible[x].resize(GameData.GRID_ROWS)
+		player_explored[x].resize(GameData.GRID_ROWS)
 		for y in range(GameData.GRID_ROWS):
 			terrain[x][y] = GameData.Terrain.PLAIN
 			capture_owner[x][y] = -1
 			capture_contest[x][y] = -1
 			capture_progress[x][y] = 0
+			player_visible[x][y] = false
+			player_explored[x][y] = false
 
 	var mid_row := GameData.GRID_ROWS / 2
 	for y in range(mid_row - HQ_HEIGHT / 2, mid_row + HQ_HEIGHT / 2):
@@ -177,9 +193,35 @@ func remove_unit(u: Unit) -> void:
 	if selected_unit == u:
 		deselect()
 	u.queue_free()
+	_recompute_player_visibility()
 
 func get_unit_at(pos: Vector2i) -> Unit:
 	return unit_at.get(pos, null)
+
+## Fog of war is player-perspective only: it hides rendering and gates the player's own
+## targeting, but the underlying game state (and the AI's decisions) stay fully informed.
+func _recompute_player_visibility() -> void:
+	for x in range(GameData.GRID_COLS):
+		for y in range(GameData.GRID_ROWS):
+			player_visible[x][y] = false
+	for u in units:
+		if u.faction != GameData.Faction.PLAYER:
+			continue
+		var vr: int = u.vision_range
+		var x_min: int = max(0, u.grid_pos.x - vr)
+		var x_max: int = min(GameData.GRID_COLS - 1, u.grid_pos.x + vr)
+		var y_min: int = max(0, u.grid_pos.y - vr)
+		var y_max: int = min(GameData.GRID_ROWS - 1, u.grid_pos.y + vr)
+		for x in range(x_min, x_max + 1):
+			for y in range(y_min, y_max + 1):
+				if abs(x - u.grid_pos.x) + abs(y - u.grid_pos.y) <= vr:
+					player_visible[x][y] = true
+					player_explored[x][y] = true
+	for u in units:
+		if u.faction == GameData.Faction.AI:
+			u.visible = player_visible[u.grid_pos.x][u.grid_pos.y]
+	grid_renderer.set_fog(player_visible, player_explored)
+	hud.minimap.update_data(terrain, capture_owner, units, player_visible)
 
 # --- Grid queries -----------------------------------------------------------
 
@@ -210,10 +252,16 @@ func compute_reachable(u: Unit) -> Array[Vector2i]:
 					result.append(next)
 	return result
 
+## Scans only the bounding box around from_pos (sized by range_max) instead of the whole
+## grid - matters on a 36x24 map since this is called per reachable-tile per unit per AI turn.
 func compute_attack_targets(from_pos: Vector2i, range_min: int, range_max: int) -> Array[Vector2i]:
 	var tiles: Array[Vector2i] = []
-	for x in range(GameData.GRID_COLS):
-		for y in range(GameData.GRID_ROWS):
+	var x_min: int = max(0, from_pos.x - range_max)
+	var x_max: int = min(GameData.GRID_COLS - 1, from_pos.x + range_max)
+	var y_min: int = max(0, from_pos.y - range_max)
+	var y_max: int = min(GameData.GRID_ROWS - 1, from_pos.y + range_max)
+	for x in range(x_min, x_max + 1):
+		for y in range(y_min, y_max + 1):
 			var p := Vector2i(x, y)
 			var dist: int = abs(p.x - from_pos.x) + abs(p.y - from_pos.y)
 			if dist >= range_min and dist <= range_max:
@@ -225,7 +273,10 @@ func compute_attack_targets(from_pos: Vector2i, range_min: int, range_max: int) 
 func compute_action_targets(u: Unit, from_pos: Vector2i) -> Array[Vector2i]:
 	var candidates := compute_attack_targets(from_pos, u.range_min, u.range_max)
 	var results: Array[Vector2i] = []
+	var fog_gated: bool = u.faction == GameData.Faction.PLAYER and player_visible.size() > 0
 	for t in candidates:
+		if fog_gated and not player_visible[t.x][t.y]:
+			continue
 		var other := get_unit_at(t)
 		if other == null or other == u:
 			continue
@@ -285,18 +336,26 @@ func get_eligible_build_tiles(faction: int) -> Array[Vector2i]:
 				eligible.append(p)
 	return eligible
 
-func find_ai_move_goal(u: Unit):
+## Single grid scan, meant to be computed once per AI turn (not once per unit) and passed
+## into find_ai_move_goal for every unit that needs it.
+func get_uncaptured_capturable_tiles(faction: int) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = []
+	for x in range(GameData.GRID_COLS):
+		for y in range(GameData.GRID_ROWS):
+			if GameData.CAPTURABLE_TERRAIN.has(terrain[x][y]) and capture_owner[x][y] != faction:
+				tiles.append(Vector2i(x, y))
+	return tiles
+
+func find_ai_move_goal(u: Unit, uncaptured_tiles: Array[Vector2i]):
 	var best: Vector2i
 	var best_dist := 999999
 	var found := false
-	for x in range(GameData.GRID_COLS):
-		for y in range(GameData.GRID_ROWS):
-			if GameData.CAPTURABLE_TERRAIN.has(terrain[x][y]) and capture_owner[x][y] != u.faction:
-				var d: int = abs(x - u.grid_pos.x) + abs(y - u.grid_pos.y)
-				if d < best_dist:
-					best_dist = d
-					best = Vector2i(x, y)
-					found = true
+	for p in uncaptured_tiles:
+		var d: int = abs(p.x - u.grid_pos.x) + abs(p.y - u.grid_pos.y)
+		if d < best_dist:
+			best_dist = d
+			best = p
+			found = true
 	for enemy in units:
 		if enemy.faction != u.faction:
 			var d: int = abs(enemy.grid_pos.x - u.grid_pos.x) + abs(enemy.grid_pos.y - u.grid_pos.y)
@@ -325,9 +384,18 @@ func _clamp_camera() -> void:
 	var map_size := Vector2(GameData.GRID_COLS * GameData.TILE_SIZE, GameData.GRID_ROWS * GameData.TILE_SIZE)
 	camera.position.x = clamp(camera.position.x, half_vp.x, max(half_vp.x, map_size.x - half_vp.x))
 	camera.position.y = clamp(camera.position.y, half_vp.y, max(half_vp.y, map_size.y - half_vp.y))
+	_update_minimap_camera_rect()
+
+func _update_minimap_camera_rect() -> void:
+	var half_vp: Vector2 = get_viewport_rect().size / 2.0
+	hud.minimap.set_camera_rect(Rect2(camera.position - half_vp, half_vp * 2.0))
 
 func _pan_camera(relative: Vector2) -> void:
 	camera.position -= relative
+	_clamp_camera()
+
+func _on_minimap_jump_requested(world_pos: Vector2) -> void:
+	camera.position = world_pos
 	_clamp_camera()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -429,6 +497,7 @@ func _perform_move(u: Unit, dest: Vector2i) -> void:
 	u.move_to(dest)
 	unit_at[dest] = u
 	u.has_moved = true
+	_recompute_player_visibility()
 	_check_hq_capture(u, dest_terrain)
 
 func _check_hq_capture(u: Unit, dest_terrain: int) -> void:
@@ -448,7 +517,9 @@ func _perform_unit_action(actor: Unit, target: Unit) -> void:
 		_perform_attack(actor, target)
 
 func _perform_heal(healer: Unit, target: Unit) -> void:
-	target.heal(target.max_hp * GameData.HEAL_FRACTION)
+	var amount := target.max_hp * GameData.HEAL_FRACTION
+	target.heal(amount)
+	_spawn_floating_text("+%d" % int(amount), target.position, Color(0.4, 1.0, 0.5))
 	_finish_unit_turn(healer)
 
 func _perform_attack(attacker: Unit, defender: Unit) -> void:
@@ -457,13 +528,35 @@ func _perform_attack(attacker: Unit, defender: Unit) -> void:
 		terrain[defender.grid_pos.x][defender.grid_pos.y],
 		terrain[attacker.grid_pos.x][attacker.grid_pos.y]
 	)
+	_spawn_floating_text("-%d" % int(result["damage_dealt"]), defender.position, Color(1.0, 0.4, 0.3))
+	if result["counter_damage"] > 0.0:
+		_spawn_floating_text("-%d" % int(result["counter_damage"]), attacker.position, Color(1.0, 0.7, 0.3))
 	if result["defender_died"]:
 		remove_unit(defender)
+		if is_instance_valid(attacker):
+			attacker.register_kill(faction_bonuses[attacker.faction])
 	if result["attacker_died"]:
 		remove_unit(attacker)
 	else:
 		_finish_unit_turn(attacker)
 	_check_elimination_win()
+
+## Lightweight, self-freeing floating combat text (damage/heal numbers) - screen "juice"
+## with no external assets, just a Label that tweens up and fades.
+func _spawn_floating_text(text: String, world_pos: Vector2, color: Color) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	label.add_theme_constant_override("outline_size", 3)
+	label.position = world_pos + Vector2(-14, -18)
+	label.z_index = 30
+	fx_layer.add_child(label)
+	var tween := create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 34, 0.7).set_trans(Tween.TRANS_SINE)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.7).set_delay(0.15)
+	tween.tween_callback(label.queue_free)
 
 func _finish_unit_turn(u: Unit) -> void:
 	if not is_instance_valid(u):
@@ -510,6 +603,7 @@ func ai_move_unit(u: Unit, dest: Vector2i) -> void:
 	var dest_terrain: int = terrain[dest.x][dest.y]
 	u.move_to(dest)
 	unit_at[dest] = u
+	_recompute_player_visibility()
 	_check_hq_capture(u, dest_terrain)
 
 func ai_attack(attacker: Unit, defender: Unit) -> void:
@@ -601,15 +695,8 @@ func _on_tech_requested(key: String) -> void:
 func _apply_faction_bonuses(faction: int) -> void:
 	var bonuses: Dictionary = faction_bonuses[faction]
 	for u in units:
-		if u.faction != faction:
-			continue
-		var def: Dictionary = GameData.UNIT_DEFS[u.unit_type]
-		var hp_ratio: float = u.hp / u.max_hp
-		u.max_hp = def["hp"] * (1.0 + bonuses["hp_mult"])
-		u.hp = u.max_hp * hp_ratio
-		u.atk = def["atk"] * (1.0 + bonuses["atk_mult"])
-		u.move_range = def["move"] + bonuses["move_bonus"]
-		u.queue_redraw()
+		if u.faction == faction:
+			u.refresh_stats(bonuses)
 
 func _on_restart_requested() -> void:
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
@@ -654,6 +741,7 @@ func _start_turn(faction: int) -> void:
 					income += GameData.MARKET_INCOME
 	gold[faction] += income
 	grid_renderer.set_grid(terrain, capture_owner)
+	_recompute_player_visibility()
 	_refresh_hud()
 
 	if faction == GameData.Faction.AI and not game_over:
@@ -675,6 +763,7 @@ func _process_watchtower_attacks(faction: int) -> void:
 					continue
 				var target := get_unit_at(p)
 				if target != null and target.faction != faction:
+					_spawn_floating_text("-%d" % GameData.WATCHTOWER_DAMAGE, target.position, Color(1.0, 0.6, 0.2))
 					if target.take_damage(GameData.WATCHTOWER_DAMAGE):
 						remove_unit(target)
 	_check_elimination_win()

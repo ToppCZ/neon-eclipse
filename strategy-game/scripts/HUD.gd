@@ -24,12 +24,47 @@ var recruit_buttons: Array[Button] = []
 var tech_buttons: Dictionary = {}
 var build_buttons: Dictionary = {} # Terrain type -> Button
 var end_turn_button: Button
+var minimap: Minimap
 
 var _toggleable_panels: Array[PanelContainer] = []
 
 const SIDEBAR_X := 970.0
 const PANEL_Y := 340.0
 const PANEL_H := 360.0
+
+const PANEL_BG := Color(0.08, 0.09, 0.13, 0.93)
+const PANEL_BORDER := Color(0.35, 0.4, 0.52, 0.7)
+const ACCENT := Color(0.32, 0.55, 0.85)
+
+func _panel_stylebox() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = PANEL_BG
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(10)
+	sb.border_color = PANEL_BORDER
+	sb.set_border_width_all(2)
+	return sb
+
+func _style_panel(panel: PanelContainer) -> void:
+	panel.add_theme_stylebox_override("panel", _panel_stylebox())
+
+func _button_stylebox(bg: Color, border: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.set_corner_radius_all(8)
+	sb.border_color = border
+	sb.set_border_width_all(1)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	return sb
+
+func _style_button(btn: Button) -> void:
+	btn.add_theme_stylebox_override("normal", _button_stylebox(Color(0.14, 0.16, 0.22, 0.95), ACCENT.darkened(0.4)))
+	btn.add_theme_stylebox_override("hover", _button_stylebox(Color(0.19, 0.23, 0.31, 0.95), ACCENT))
+	btn.add_theme_stylebox_override("pressed", _button_stylebox(ACCENT.darkened(0.25), ACCENT))
+	btn.add_theme_stylebox_override("disabled", _button_stylebox(Color(0.09, 0.09, 0.11, 0.75), Color(0.25, 0.25, 0.28)))
+	btn.add_theme_color_override("font_color", Color(0.95, 0.95, 0.98))
+	btn.add_theme_color_override("font_disabled_color", Color(0.5, 0.5, 0.55))
 
 func _ready() -> void:
 	_build_sidebar()
@@ -39,12 +74,19 @@ func _ready() -> void:
 	_build_build_panel()
 	_build_legend_panel()
 	_build_game_over_panel()
+	_build_minimap()
 	_toggleable_panels = [recruit_panel, tech_panel, build_panel, legend_panel]
+
+func _build_minimap() -> void:
+	minimap = Minimap.new()
+	minimap.position = Vector2(SIDEBAR_X - 10, 720 - 176)
+	add_child(minimap)
 
 func _build_sidebar() -> void:
 	var panel := PanelContainer.new()
 	panel.position = Vector2(SIDEBAR_X, 16)
 	panel.custom_minimum_size = Vector2(300, 240)
+	_style_panel(panel)
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
@@ -58,6 +100,7 @@ func _build_sidebar() -> void:
 
 	gold_label = Label.new()
 	gold_label.add_theme_font_size_override("font_size", 18)
+	gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 	gold_label.text = "Gold: 0"
 	vbox.add_child(gold_label)
 
@@ -65,6 +108,7 @@ func _build_sidebar() -> void:
 	end_turn_button.text = "End Turn"
 	end_turn_button.custom_minimum_size = Vector2(260, 44)
 	end_turn_button.pressed.connect(func(): end_turn_requested.emit())
+	_style_button(end_turn_button)
 	vbox.add_child(end_turn_button)
 
 	vbox.add_child(_make_toggle_button("Recruit", func(): return recruit_panel))
@@ -77,6 +121,7 @@ func _make_toggle_button(label: String, panel_getter: Callable) -> Button:
 	btn.text = label
 	btn.custom_minimum_size = Vector2(260, 44)
 	btn.pressed.connect(func(): _toggle_panel(panel_getter.call()))
+	_style_button(btn)
 	return btn
 
 ## Only one panel is open at a time; closing Build also cancels build-placement mode.
@@ -94,6 +139,7 @@ func _build_unit_info_panel() -> void:
 	unit_info_panel.position = Vector2(SIDEBAR_X, 266)
 	unit_info_panel.custom_minimum_size = Vector2(300, 100)
 	unit_info_panel.visible = false
+	_style_panel(unit_info_panel)
 	add_child(unit_info_panel)
 
 	unit_info_label = RichTextLabel.new()
@@ -107,6 +153,7 @@ func _build_recruit_panel() -> void:
 	recruit_panel.position = Vector2(SIDEBAR_X, PANEL_Y)
 	recruit_panel.custom_minimum_size = Vector2(300, PANEL_H)
 	recruit_panel.visible = false
+	_style_panel(recruit_panel)
 	add_child(recruit_panel)
 
 	var outer := VBoxContainer.new()
@@ -136,6 +183,7 @@ func _build_recruit_panel() -> void:
 		btn.text = "%s - %d gold" % [def["name"], def["cost"]]
 		btn.custom_minimum_size = Vector2(260, 40)
 		btn.pressed.connect(func(): recruit_requested.emit(type))
+		_style_button(btn)
 		group.add_child(btn)
 		recruit_buttons.append(btn)
 
@@ -152,6 +200,7 @@ func _build_tech_panel() -> void:
 	tech_panel.position = Vector2(SIDEBAR_X, PANEL_Y)
 	tech_panel.custom_minimum_size = Vector2(300, 220)
 	tech_panel.visible = false
+	_style_panel(tech_panel)
 	add_child(tech_panel)
 
 	var vbox := VBoxContainer.new()
@@ -169,6 +218,7 @@ func _build_tech_panel() -> void:
 		btn.text = "%s (%s) - %d gold" % [def["name"], def["desc"], def["cost"]]
 		btn.custom_minimum_size = Vector2(280, 48)
 		btn.pressed.connect(func(): tech_requested.emit(key))
+		_style_button(btn)
 		vbox.add_child(btn)
 		tech_buttons[key] = btn
 
@@ -177,6 +227,7 @@ func _build_build_panel() -> void:
 	build_panel.position = Vector2(SIDEBAR_X, PANEL_Y)
 	build_panel.custom_minimum_size = Vector2(300, PANEL_H)
 	build_panel.visible = false
+	_style_panel(build_panel)
 	add_child(build_panel)
 
 	var outer := VBoxContainer.new()
@@ -198,6 +249,7 @@ func _build_build_panel() -> void:
 		btn.text = "[%s] %s - %d gold" % [def["category"], def["name"], def["cost"]]
 		btn.custom_minimum_size = Vector2(280, 40)
 		btn.pressed.connect(func(): build_requested.emit(building_type))
+		_style_button(btn)
 		group.add_child(btn)
 		build_buttons[building_type] = btn
 
@@ -216,6 +268,7 @@ func _build_build_panel() -> void:
 		build_panel.visible = false
 		build_cancelled.emit()
 	)
+	_style_button(cancel_btn)
 	outer.add_child(cancel_btn)
 
 func _build_legend_panel() -> void:
@@ -223,6 +276,7 @@ func _build_legend_panel() -> void:
 	legend_panel.position = Vector2(SIDEBAR_X, PANEL_Y)
 	legend_panel.custom_minimum_size = Vector2(300, PANEL_H)
 	legend_panel.visible = false
+	_style_panel(legend_panel)
 	add_child(legend_panel)
 
 	var outer := VBoxContainer.new()
@@ -276,6 +330,7 @@ func _build_game_over_panel() -> void:
 	game_over_panel.position = Vector2(340, 260)
 	game_over_panel.custom_minimum_size = Vector2(400, 200)
 	game_over_panel.visible = false
+	_style_panel(game_over_panel)
 	add_child(game_over_panel)
 
 	var vbox := VBoxContainer.new()
@@ -292,6 +347,7 @@ func _build_game_over_panel() -> void:
 	restart_btn.text = "Back to Menu"
 	restart_btn.custom_minimum_size = Vector2(200, 56)
 	restart_btn.pressed.connect(func(): restart_requested.emit())
+	_style_button(restart_btn)
 	vbox.add_child(restart_btn)
 
 func update_gold(player_gold: int, ai_gold: int) -> void:
@@ -304,9 +360,12 @@ func show_unit_info(unit: Unit) -> void:
 	unit_info_panel.visible = true
 	var def: Dictionary = GameData.UNIT_DEFS[unit.unit_type]
 	var role_line := "Heals allies" if unit.is_healer else "ATK: %d" % int(unit.atk)
-	unit_info_label.text = "[b]%s[/b]\nHP: %d / %d\n%s  DEF: %d\nMove: %d  Range: %d-%d" % [
-		def["name"], int(unit.hp), int(unit.max_hp), role_line, int(unit.def_stat),
-		unit.move_range, unit.range_min, unit.range_max,
+	var name_line: String = def["name"]
+	if unit.rank > 0:
+		name_line += " [color=#ffd933](%s)[/color]" % Unit.RANK_NAMES[unit.rank]
+	unit_info_label.text = "[b]%s[/b]\nHP: %d / %d\n%s  DEF: %d\nMove: %d  Range: %d-%d  Kills: %d" % [
+		name_line, int(unit.hp), int(unit.max_hp), role_line, int(unit.def_stat),
+		unit.move_range, unit.range_min, unit.range_max, unit.kills,
 	]
 
 func hide_unit_info() -> void:

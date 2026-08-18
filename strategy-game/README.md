@@ -31,6 +31,20 @@ eras into one grid battle:
   army for the rest of the match.
 - **Win conditions** — eliminate the enemy army, or march a unit onto the
   enemy HQ for an instant win (Advance Wars-style HQ capture).
+- **Fog of war** (Advance Wars / Command & Conquer) — you only see what's
+  currently in vision range of one of your units, or ground you've explored
+  before (dimmed, remembered terrain — enemy units there aren't shown since
+  they could have moved on). The AI itself still plays with full information
+  for its own decisions, matching how the classics only fog the human side.
+- **Unit veterancy** (Advance Wars CO powers / XCOM) — units that rack up
+  kills promote to Veteran (2 kills) then Elite (5 kills), each rank a
+  permanent stat boost on top of tech bonuses, shown as gold chevrons under
+  the unit's HP bar. Makes keeping a unit alive matter beyond just its
+  current stats.
+- **Minimap** (every RTS ever) — an always-visible overview in the corner
+  showing territory ownership and visible units, with your current camera
+  view outlined; tap/click anywhere on it to jump the camera straight there,
+  since the full map doesn't fit on one screen.
 
 The map is 36x24 tiles (up from an initial 12x8 prototype) — big enough that
 first contact between armies takes several turns, so there's real time to
@@ -153,9 +167,8 @@ This is a first playable slice, not the final game. Known simplifications:
   it's the same map every match (deterministic, for balance/testability) -
   randomizing it per match would be a small change.
 - One AI difficulty (heuristic, not adaptive).
-- No fog of war, no multiplayer — both are natural next additions given the
-  systems already in place (grid state and turn flow are already fully
-  separated from rendering/input).
+- No multiplayer yet — fog of war is now in, and the same grid-state/render
+  separation that made it possible would carry over to a networked mode.
 - Barracks (built or captured) all produce the full unit roster; a natural
   next step is specializing production buildings by unit category (e.g. an
   Airfield for Skyraiders only, a Stable for Cavalry/Scouts).
@@ -186,6 +199,19 @@ found and fixed:
    instead of attacking, because the state machine required a redundant
    "confirm position" tap before attack options were ever computed. Fixed
    by computing and highlighting in-range targets immediately on selection.
+
+This round's additions (fog of war, veterancy, minimap) were validated the
+same way: real `push_input()` events for a minimap tap-to-jump, direct
+assertions on `player_visible` fog state after a turn, and a rank-up check
+by calling `register_kill()` twice and confirming both the rank and the
+resulting stat increase, all under Xvfb with real rendering — plus a
+rendered screenshot to visually confirm the minimap, HUD styling, unit
+shapes, building icons, and fog dimming all look right together, not just
+individually. Also fixed along the way: `compute_attack_targets` and the
+AI's capturable-tile search now scan a bounded box/precomputed list around
+each unit instead of the full 36x24 grid per call, and attacks/heals now
+spawn floating damage/heal numbers with a brief hit-flash instead of stats
+changing silently.
 
 Both are exactly the class of bug that's invisible to a headless test that
 only calls internal functions directly — the bug lives in the input-event
