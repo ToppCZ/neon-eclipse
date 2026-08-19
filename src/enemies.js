@@ -383,9 +383,7 @@ export class EnemyManager {
       ctx.shadowColor = statusGlow || e.glow;
       ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : e.color;
-      ctx.beginPath();
       drawEnemyBody(ctx, e);
-      ctx.fill();
       if (statusGlow) {
         ctx.strokeStyle = statusGlow;
         ctx.lineWidth = 2;
@@ -474,73 +472,244 @@ function easeOutCubic(t) {
   return 1 - Math.pow(1 - c, 3);
 }
 
-// Distinct silhouettes per enemy archetype instead of one shared blob shape —
-// a fast enemy reads as fast, a tank reads as armored, a caster telegraphs
-// its shot. Falls back to the original spiky blob for anything unlisted.
+// Bio-mechanical swarm creatures, not abstract polygons: legs that scuttle,
+// wings that flutter, a maw that visibly opens as it charges a shot. Each
+// function owns its full draw (legs/accents behind, body filled on top)
+// using whatever ctx.fillStyle/shadow the caller already set. Falls back to
+// the original spiky blob for anything unlisted.
 function drawEnemyBody(ctx, e) {
   const id = e.isBoss ? e.bossId : (e.type && e.type.id);
   switch (id) {
-    case 'sprinter': return drawDartShape(ctx, e.radius);
-    case 'swarmling': return drawHexShape(ctx, e.radius, e.t);
-    case 'spitter': return drawCrystalShape(ctx, e.radius, e._chargePulse || 0);
-    case 'brute': return drawArmoredShape(ctx, e.radius);
-    case 'swarmMother': return drawPulseRingShape(ctx, e.radius, e.t, e.pulsing > 0);
-    case 'eclipse': return drawSpikyBlob(ctx, e.radius * (e.dashing > 0 ? 1.25 : 1), 10, e.t);
-    default: return drawSpikyBlob(ctx, e.radius, e.isBoss ? 10 : (e.isElite ? 7 : 5), e.t);
+    case 'crawler': return drawCrawler(ctx, e);
+    case 'sprinter': return drawSprinter(ctx, e);
+    case 'swarmling': return drawSwarmling(ctx, e);
+    case 'spitter': return drawSpitter(ctx, e);
+    case 'brute': return drawBrute(ctx, e);
+    case 'warden': return drawWardenBoss(ctx, e);
+    case 'swarmMother': return drawSwarmMotherBoss(ctx, e);
+    case 'eclipse': return drawEclipseBoss(ctx, e);
+    default: {
+      ctx.beginPath();
+      drawSpikyBlob(ctx, e.radius, e.isBoss ? 10 : (e.isElite ? 7 : 5), e.t);
+      ctx.fill();
+    }
   }
 }
 
-// Elongated forward-pointing dart — reads as fast even standing still.
-function drawDartShape(ctx, radius) {
+// Ground-scuttling bug: a fanned cluster of legs trailing the body, with a
+// small glowing eye-core. Slow, steady gait matches its slow-ish speed.
+function drawCrawler(ctx, e) {
+  drawLegs(ctx, e.radius, 4, e.t, 6, e.radius * 0.7, e.color);
   ctx.beginPath();
-  ctx.moveTo(radius * 1.5, 0);
-  ctx.lineTo(-radius * 0.7, radius * 0.75);
-  ctx.lineTo(-radius * 0.25, 0);
-  ctx.lineTo(-radius * 0.7, -radius * 0.75);
-  ctx.closePath();
+  drawSpikyBlob(ctx, e.radius, 5, e.t);
+  ctx.fill();
+  drawEyeCore(ctx, e.radius);
 }
 
-// Small pulsing hexagon — deliberately simple/quiet since these spawn in groups.
-function drawHexShape(ctx, radius, t) {
-  const pulse = 0.92 + 0.08 * Math.sin(t * 5);
+// Same bug body plan as the crawler but stretched into a dart and given a
+// much faster leg-scuttle — the animation itself communicates the speed,
+// not just the color.
+function drawSprinter(ctx, e) {
+  drawLegs(ctx, e.radius, 4, e.t, 16, e.radius * 0.95, e.color);
   ctx.beginPath();
+  ctx.moveTo(e.radius * 1.5, 0);
+  ctx.lineTo(-e.radius * 0.7, e.radius * 0.75);
+  ctx.lineTo(-e.radius * 0.25, 0);
+  ctx.lineTo(-e.radius * 0.7, -e.radius * 0.75);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Tiny flying nanobot: fluttering wing pair around a small glowing body —
+// these spawn in groups, so the shape stays deliberately quiet/small.
+function drawSwarmling(ctx, e) {
+  drawWings(ctx, e.radius, e.t, e.color);
+  ctx.beginPath();
+  ctx.arc(0, 0, e.radius * 0.7, 0, TAU);
+  ctx.fill();
+  drawEyeCore(ctx, e.radius * 0.55);
+}
+
+// Stationary bio-turret: a camera-iris maw that visibly dilates open as it
+// charges its shot — the telegraph is the mechanism, not a color tint.
+function drawSpitter(ctx, e) {
+  ctx.beginPath();
+  ctx.arc(0, 0, e.radius, 0, TAU);
+  ctx.fill();
+  drawIris(ctx, e.radius, e._chargePulse || 0);
+}
+
+// Heavy armored quadruped: thick slow-stomping legs, notched shoulder-plate
+// hull, and a plating ring accent that reads as "tank" at a glance.
+function drawBrute(ctx, e) {
+  drawLegs(ctx, e.radius, 4, e.t, 2.6, e.radius * 0.85, e.color);
+  ctx.beginPath();
+  drawNotchedPolygon(ctx, e.radius, 8, 0.8);
+  ctx.fill();
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, e.radius * 0.6, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The Warden: an armored sentinel core ringed by rotating shield plates —
+// the plates flare outward when it winds up its slam.
+function drawWardenBoss(ctx, e) {
+  const slamFlare = e.slamming > 0 ? 1.2 : 1;
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = 3;
   for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * TAU;
-    const r = radius * pulse;
+    const a = (i / 6) * TAU + e.t * 0.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.radius * 1.25 * slamFlare, a, a + 0.35);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.beginPath();
+  drawNotchedPolygon(ctx, e.radius * (e.slamming > 0 ? 1.1 : 1), 8, 0.82);
+  ctx.fill();
+}
+
+// The Swarm Mother: a queen insect with a bulbous egg-sac abdomen that
+// swells and brightens as it nears spawning its next swarmling wave.
+function drawSwarmMotherBoss(ctx, e) {
+  const cooldown = (e.type && e.type.summonCooldown) || 5;
+  const spawnPulse = clamp(1 - (e.summonTimer ?? cooldown) / cooldown, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = 0.55 + spawnPulse * 0.35;
+  ctx.beginPath();
+  ctx.ellipse(-e.radius * 0.55, 0, e.radius * (0.85 + spawnPulse * 0.3), e.radius * 0.68, 0, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  drawRippleRing(ctx, e.radius * 0.72, e.t, e.pulsing > 0);
+  ctx.fill();
+  drawEyeCore(ctx, e.radius * 0.4);
+}
+
+// The Eclipse: a literal eclipse — a bright corona of rays around a dark
+// void core. The core blacks out and the corona flares while it dashes,
+// like the moment of totality.
+function drawEclipseBoss(ctx, e) {
+  const eclipsing = e.dashing > 0;
+  ctx.save();
+  ctx.strokeStyle = e.color;
+  ctx.globalAlpha = eclipsing ? 1 : 0.7;
+  ctx.lineWidth = 2.5;
+  const rays = 12;
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * TAU + e.t * 1.2;
+    const r1 = e.radius * (eclipsing ? 1.5 : 1.15);
+    const r2 = r1 + e.radius * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.save();
+  if (eclipsing) ctx.fillStyle = '#050208';
+  ctx.beginPath();
+  ctx.arc(0, 0, e.radius, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Shared building blocks -----------------------------------------------
+
+// Fan of single-segment legs trailing the body, with a small per-leg twitch
+// so the gait speed itself reads as how fast the creature is.
+function drawLegs(ctx, radius, count, t, gaitSpeed, legLen, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.4, radius * 0.16);
+  ctx.globalAlpha = 0.7;
+  for (let i = 0; i < count; i++) {
+    const spread = count > 1 ? i / (count - 1) - 0.5 : 0;
+    const baseA = Math.PI + spread * 1.3;
+    const twitch = Math.sin(t * gaitSpeed + i * 1.7) * 0.25;
+    const a = baseA + twitch;
+    const x1 = Math.cos(baseA) * radius * 0.65, y1 = Math.sin(baseA) * radius * 0.65;
+    const x2 = x1 + Math.cos(a) * legLen, y2 = y1 + Math.sin(a) * legLen;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A fluttering pair of wings, both flapping in phase like an insect's.
+function drawWings(ctx, radius, t, color) {
+  const flap = Math.sin(t * 22) * 0.35;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.5;
+  for (const side of [1, -1]) {
+    ctx.save();
+    ctx.rotate(side * 0.9 + flap);
+    ctx.beginPath();
+    ctx.ellipse(radius * 0.9, 0, radius * 0.9, radius * 0.35, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// A shut eye that visibly opens as `openAmount` (0..1) rises — the spitter's
+// charge-up telegraph made literal instead of just a size pulse. At rest it
+// reads as a mostly-closed lid with only a thin glowing rim; at full charge
+// the lid retracts to a thin ring and a bright core "pupil" fills the eye.
+function drawIris(ctx, radius, openAmount) {
+  const lidR = radius * (0.92 - 0.75 * openAmount);
+  ctx.save();
+  ctx.fillStyle = '#0a0612';
+  ctx.globalAlpha = 0.92;
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(0, lidR), 0, TAU);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.5 + openAmount * 0.4;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * (0.08 + openAmount * 0.5), 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Small glowing eye/core dot, used as a lightweight "this is alive" accent.
+function drawEyeCore(ctx, radius) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.65;
+  ctx.beginPath();
+  ctx.arc(radius * 0.3, 0, Math.max(1, radius * 0.18), 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Notched polygon — reads as armored/tanky (brute, Warden).
+function drawNotchedPolygon(ctx, radius, sides, notchDepth) {
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * TAU;
+    const r = radius * (i % 2 === 0 ? 1 : notchDepth);
     const x = Math.cos(a) * r, y = Math.sin(a) * r;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.closePath();
 }
 
-// Crystal shape that swells right before it fires — a real visual telegraph,
-// not just a color change, driven by e._chargePulse (see behaviorRanged).
-function drawCrystalShape(ctx, radius, chargePulse) {
-  const r = radius * (1 + chargePulse * 0.4);
-  ctx.beginPath();
-  ctx.moveTo(0, -r * 1.3);
-  ctx.lineTo(r, 0);
-  ctx.lineTo(0, r * 1.3);
-  ctx.lineTo(-r, 0);
-  ctx.closePath();
-}
-
-// Notched octagon — reads as armored/tanky.
-function drawArmoredShape(ctx, radius) {
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU;
-    const r = radius * (i % 2 === 0 ? 1 : 0.8);
-    const x = Math.cos(a) * r, y = Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
-// Rippling many-pointed ring for the Swarm Mother boss — flares when pulsing.
-function drawPulseRingShape(ctx, radius, t, pulsing) {
+// Rippling many-pointed ring — the Swarm Mother's head, flares when pulsing.
+function drawRippleRing(ctx, radius, t, pulsing) {
   const pulse = pulsing ? 1.2 : 1;
-  ctx.beginPath();
   for (let i = 0; i <= 12; i++) {
     const a = (i / 12) * TAU;
     const r = radius * pulse * (0.85 + 0.15 * Math.sin(a * 4 + t * 3));

@@ -3,21 +3,21 @@ import { clamp, TAU } from './utils.js';
 const CHARACTERS = {
   vex: {
     id: 'vex', name: 'Vex', tagline: 'Balanced striker',
-    color: '#5ee6ff', accent: '#bff6ff',
+    color: '#5ee6ff', accent: '#bff6ff', shipShape: 'balanced',
     baseHp: 100, baseSpeed: 235, baseMight: 1, baseArea: 1, baseCooldown: 1,
     baseMagnet: 90, baseLuck: 1, baseArmor: 0, baseRegen: 0.4,
     startWeapon: 'shardCannon',
   },
   rook: {
     id: 'rook', name: 'Rook', tagline: 'Slow, armored, relentless',
-    color: '#ff8a5e', accent: '#ffd7c2',
+    color: '#ff8a5e', accent: '#ffd7c2', shipShape: 'armored',
     baseHp: 150, baseSpeed: 195, baseMight: 1.15, baseArea: 1.1, baseCooldown: 1.05,
     baseMagnet: 75, baseLuck: 0.9, baseArmor: 4, baseRegen: 0.7,
     startWeapon: 'pulseBlade',
   },
   nyx: {
     id: 'nyx', name: 'Nyx', tagline: 'Fast, fragile, lucky',
-    color: '#c98cff', accent: '#ecd6ff',
+    color: '#c98cff', accent: '#ecd6ff', shipShape: 'sleek',
     baseHp: 80, baseSpeed: 270, baseMight: 0.9, baseArea: 0.95, baseCooldown: 0.92,
     baseMagnet: 110, baseLuck: 1.4, baseArmor: 0, baseRegen: 0.25,
     startWeapon: 'orbitDrones',

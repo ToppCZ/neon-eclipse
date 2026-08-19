@@ -30,6 +30,14 @@ const ICONS = {
   dashCharges: { glyph: '»', color: '#5ee6ff' },
 };
 
+// Mirrors game.js's drawShipHull point-for-point so the character-select
+// portrait actually matches the ship you'll fly, not a generic placeholder.
+const SHIP_HULL_POINTS = {
+  balanced: '18,0 -12,11 -6,0 -12,-11',
+  armored: '15,0 6,8 -9,12 -13,0 -9,-12 6,-8',
+  sleek: '22,0 -2,5 -15,8 -9,0 -15,-8 -2,-5',
+};
+
 const NODE_ICONS = {
   combat: { glyph: '⚔', color: '#ff8a5e' },
   elite: { glyph: '☠', color: '#ffd54a' },
@@ -228,7 +236,7 @@ class UI {
       const card = document.createElement('div');
       card.className = 'char-card';
       card.innerHTML = `<div class="char-swatch" style="box-shadow:0 0 16px ${c.color}66">
-          <svg viewBox="-20 -14 40 28" width="30" height="21"><polygon points="18,0 -12,11 -6,0 -12,-11" fill="${c.color}"/></svg>
+          <svg viewBox="-20 -14 40 28" width="30" height="21"><polygon points="${SHIP_HULL_POINTS[c.shipShape] || SHIP_HULL_POINTS.balanced}" fill="${c.color}"/></svg>
         </div>
         <h3>${c.name}</h3><p>${c.tagline}</p>`;
       card.addEventListener('click', () => onPick(c.id));

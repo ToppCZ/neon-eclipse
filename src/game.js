@@ -1005,35 +1005,34 @@ export class Game {
     ctx.scale(dashStretch, 1 / Math.sqrt(dashStretch));
     ctx.rotate(this._bankTilt);
 
-    // Engine glow — intensifies while moving, flares while dashing.
+    // Engine glow — intensifies while moving, flares while dashing. Shape
+    // (single/twin/swept) matches each character's ship silhouette.
     const engineIntensity = p.dashTimeLeft > 0 ? 1 : (p.moving ? 0.6 : 0.25);
+    const shipShape = p.char.shipShape || 'balanced';
     ctx.save();
     ctx.globalAlpha *= engineIntensity;
     ctx.fillStyle = p.char.accent || p.char.color;
     ctx.shadowColor = p.char.color;
     ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.ellipse(-10, 0, 6 + engineIntensity * 3, 3, 0, 0, TAU);
-    ctx.fill();
+    for (const eng of ENGINE_POSITIONS[shipShape]) {
+      ctx.beginPath();
+      ctx.ellipse(eng.x, eng.y, eng.rx * (6 + engineIntensity * 3), eng.ry * 3, 0, 0, TAU);
+      ctx.fill();
+    }
     ctx.restore();
 
-    // Hull
+    // Hull — a distinct silhouette per character, not just a recolored triangle.
     ctx.shadowColor = p.char.color;
     ctx.shadowBlur = 18;
     ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : p.char.color;
-    ctx.beginPath();
-    ctx.moveTo(18, 0);
-    ctx.lineTo(-12, 11);
-    ctx.lineTo(-6, 0);
-    ctx.lineTo(-12, -11);
-    ctx.closePath();
+    drawShipHull(ctx, shipShape);
     ctx.fill();
 
     // Cockpit accent
     ctx.fillStyle = p.char.accent || '#ffffff';
     ctx.globalAlpha *= 0.9;
     ctx.beginPath();
-    ctx.arc(6, 0, 3, 0, TAU);
+    ctx.arc(COCKPIT_X[shipShape], 0, 3, 0, TAU);
     ctx.fill();
 
     ctx.restore();
@@ -1114,3 +1113,39 @@ export class Game {
 }
 
 function frac(v) { return v - Math.floor(v); }
+
+// Per-character ship silhouettes — matches each character's tagline instead
+// of one triangle recolored three ways: 'balanced' is the original dart,
+// 'armored' is a wide hexagonal hull (Rook: slow, armored, relentless),
+// 'sleek' is an elongated needle with swept flanks (Nyx: fast, fragile).
+function drawShipHull(ctx, shipShape) {
+  ctx.beginPath();
+  if (shipShape === 'armored') {
+    ctx.moveTo(15, 0);
+    ctx.lineTo(6, 8);
+    ctx.lineTo(-9, 12);
+    ctx.lineTo(-13, 0);
+    ctx.lineTo(-9, -12);
+    ctx.lineTo(6, -8);
+  } else if (shipShape === 'sleek') {
+    ctx.moveTo(22, 0);
+    ctx.lineTo(-2, 5);
+    ctx.lineTo(-15, 8);
+    ctx.lineTo(-9, 0);
+    ctx.lineTo(-15, -8);
+    ctx.lineTo(-2, -5);
+  } else {
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-12, 11);
+    ctx.lineTo(-6, 0);
+    ctx.lineTo(-12, -11);
+  }
+  ctx.closePath();
+}
+
+const ENGINE_POSITIONS = {
+  balanced: [{ x: -10, y: 0, rx: 1, ry: 1 }],
+  armored: [{ x: -11, y: 5, rx: 0.75, ry: 0.8 }, { x: -11, y: -5, rx: 0.75, ry: 0.8 }],
+  sleek: [{ x: -13, y: 0, rx: 1.3, ry: 0.65 }],
+};
+const COCKPIT_X = { balanced: 6, armored: 3, sleek: 11 };
