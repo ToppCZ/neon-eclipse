@@ -8,27 +8,30 @@ window.__game = game; // debug hook for automated/manual testing in the console
 
 const input = { left: false, right: false, up: false, down: false, dashPressed: false };
 
-const KEY_MAP = {
-  KeyA: 'left', ArrowLeft: 'left',
-  KeyD: 'right', ArrowRight: 'right',
-  KeyW: 'up', ArrowUp: 'up',
-  KeyS: 'down', ArrowDown: 'down',
-};
+// Arrow keys, Shift, and P are always-on fallbacks; game.settings.keybinds
+// (rebindable in Settings) adds a second, user-chosen primary key on top —
+// rebinding can never lock a player out of basic controls.
+const FIXED_DIR = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+function resolveDir(code) {
+  return FIXED_DIR[code] || Object.keys(game.settings.keybinds).find(
+    (action) => ['up', 'down', 'left', 'right'].includes(action) && game.settings.keybinds[action] === code
+  );
+}
 
 window.addEventListener('keydown', (e) => {
-  const dir = KEY_MAP[e.code];
+  const dir = resolveDir(e.code);
   if (dir) { input[dir] = true; e.preventDefault(); }
-  if (e.code === 'Escape' || e.code === 'KeyP') {
+  if (e.code === 'Escape' || e.code === 'KeyP' || e.code === game.settings.keybinds.pause) {
     if (game.state === 'playing' || game.state === 'paused') game.togglePause();
   }
-  if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+  if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === game.settings.keybinds.dash) {
     input.dashPressed = true;
     e.preventDefault();
   }
 });
 
 window.addEventListener('keyup', (e) => {
-  const dir = KEY_MAP[e.code];
+  const dir = resolveDir(e.code);
   if (dir) { input[dir] = false; e.preventDefault(); }
 });
 

@@ -17,6 +17,7 @@ function defaultMeta() {
     levels: { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 },
     stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, bestAct: 0, bestWave: 0, totalKills: 0, totalNodesCleared: 0 },
     history: [], // last few runs, newest first — quick "what happened last time" glance on the menu
+    achievements: [], // unlocked achievement ids, see achievements.js
   };
 }
 
@@ -31,6 +32,7 @@ export function loadMeta() {
       levels: { ...base.levels, ...(parsed.levels || {}) },
       stats: { ...base.stats, ...(parsed.stats || {}) },
       history: Array.isArray(parsed.history) ? parsed.history.slice(0, MAX_HISTORY) : base.history,
+      achievements: Array.isArray(parsed.achievements) ? parsed.achievements : base.achievements,
     };
   } catch {
     return defaultMeta();

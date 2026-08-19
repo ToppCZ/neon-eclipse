@@ -8,6 +8,10 @@ function defaultSettings() {
     reducedMotion: false, // halves particle counts
     showHitbox: false,    // draws the player's actual collision radius
     difficulty: 'normal', // 'easy' | 'normal' | 'hard'
+    // Rebindable primary keys. Arrow keys, Shift, and P always work as fixed
+    // fallbacks regardless of these (see main.js), so rebinding can't lock
+    // a player out of moving, dashing, or pausing.
+    keybinds: { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', dash: 'Space', pause: 'Escape' },
   };
 }
 

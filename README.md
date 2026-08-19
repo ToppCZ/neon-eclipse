@@ -79,3 +79,15 @@ desktop/         WPF + WebView2 wrapper -> NeonEclipse.exe (desktop/game/ is bun
 ## Debugging
 
 `window.__game` exposes the live `Game` instance in the browser console for inspection.
+
+## Testing
+
+`tests/smoke.mjs` is an end-to-end regression check (menu → settings → an Endless Mode
+run through a wave-shop and death → end screen) driven by a headless Chromium session.
+It's the one place in the repo with an external dependency — kept out of the
+zero-dependency runtime on purpose, since it's a contributor tool, not part of the game:
+
+```bash
+npm install -D playwright
+node tests/smoke.mjs
+```

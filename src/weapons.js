@@ -436,6 +436,18 @@ export class WeaponSystem {
     // Bullets
     for (const b of this.bullets.active) {
       const sx = b.x - camX, sy = b.y - camY;
+      const speed = Math.hypot(b.vx, b.vy) || 1;
+      const trailLen = clamp(speed * 0.02, 6, 22);
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - (b.vx / speed) * trailLen, sy - (b.vy / speed) * trailLen);
+      ctx.stroke();
+      ctx.restore();
+
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(Math.atan2(b.vy, b.vx));

@@ -62,7 +62,7 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 17. ✅ **Reduced-motion toggle** — halves particle counts for motion-sensitive players / low-end devices.
 18. ✅ **Run history** — last 5 runs (mode, result, level, gold) on the main menu, closing the idle-game-style feedback loop the earlier research doc recommended.
 19. 📋 Colorblind-safe palette mode — resistance/weakness and damage-type colors currently rely on hue alone.
-20. 📋 Rebindable keys (currently WASD/arrows + Space/Shift are hardcoded in `main.js`).
+20. ✅ **Rebindable keys** — Move Up/Down/Left/Right, Dash, and Pause can each be rebound from Settings via a "press a key" capture flow. Arrow keys, Shift, and P remain permanent fallbacks so rebinding can never lock a player out of basic controls.
 21. 📋 Gamepad support.
 22. ✅ **Styled hover tooltip** for weapon tray icons, replacing the native browser `title` tooltip — shows name/level/description. (Required a fix: the tray rebuilds every frame, so per-icon listeners got orphaned and pointer-events:none on the container blocked a container-level `mouseleave`; fixed with a single document-level delegated listener.)
 23. 📋 Post-run stat graph (damage-per-second over time, not just totals) — bigger scope, needs a lightweight charting pass.
@@ -76,26 +76,26 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 29. ✅ **Low-HP vignette pulse** — the existing static vignette now intensifies and pulses red under 25% HP.
 30. ✅ **Elemental-tinted death particles** — burst color now reflects the enemy's active status effect (burn/poison/shock/frost) at time of death instead of always using the enemy's base color.
 31. ✅ **Player dash trail** — trailing sparks spawn behind the player each frame of a dash, colored by the character's own color.
-32. 📋 Weapon projectile trails (currently flat-colored shapes with no motion trail).
-33. 📋 Background parallax layer (distant stars/nebula) for depth beyond the flat grid.
+32. ✅ **Weapon projectile trails** — a short fading line now trails every bullet/missile, scaled to its speed.
+33. ✅ **Background parallax star layer** — a sparse, slow-scrolling dot field behind the grid for depth. Deterministic per-cell hash instead of stored star data, so it costs no state and can't desync from the camera.
 34. ✅ **Level-up radial burst** — a gold particle burst now fires at the moment a level-up modal opens, distinct from the existing hit-effect particles.
 35. ✅ **Magnet pull-line visual** — pickups being drawn toward the player now render a short comet-tail line opposite their velocity.
 36. ✅ **Frost-aura visual ring** — the frozenAura elite affix's actual slow radius (previously invisible — the mechanic existed but wasn't shown) now renders as a translucent cyan ring matching the real gameplay radius exactly (shared constant, not eyeballed).
-37. 📋 Screen-edge tint tied to biome accent color (currently only the world-boundary rectangle uses biome accent).
+37. ✅ **Biome-tinted screen edge** — the existing `#vignette` overlay now layers in a second gradient tinted by the current biome's accent color (via a CSS custom property the game sets on entering/leaving combat), on top of the darkening effect it already had.
 38. 📋 Character select/relic select portrait polish (currently flat color swatches).
 
 ### Game Logic / Systems (12)
 39. ✅ **Settings persistence** (`src/settings.js`, localStorage) — separate from the existing meta-progression save.
 40. ✅ **Difficulty multiplier plumbing** in `EnemyManager` (`diff.hp/dmg/spawn`) — reusable hook other systems (e.g. future boon/curse choices) can also feed into.
 41. ✅ **Run-history recording** in `meta.js` (last 5 runs, mode-aware).
-42. 📋 Achievements system (persistent list of unlockable milestones — "reach wave 20", "clear act 3 without hitting a hazard").
+42. ✅ **Achievements system** — 9 milestones (`src/achievements.js`) checked once at the end of each run against persistent + this-run stats (first kill, 100 kills in a run, Act 3, a story win, Wave 10/25 in Endless, character level 20, 1000 lifetime gold, 10 runs completed). Newly-unlocked ones banner on the end screen; total unlocked count shows on the main menu.
 43. 📋 Local leaderboard / best-run replay data (store enough of a run's event log to show a compressed replay).
 44. ✅ **Seeded runs** — a seed (numeric or typed word, hashed) can be set from the character-select screen and is shown on the end screen. The whole codebase already funneled randomness through one `rng()` in `utils.js`, so reseeding it at run start makes every roll (node types, upgrade offers, enemy/elite choices, hazard placement, loot) reproducible from that seed. Caveat, stated honestly: real-time spawn cadence still depends on frame-rate/dt, so this reproduces the *sequence of rolls* given identical input, not a frame-perfect replay.
 45. 📋 Save-slot support (currently one global save; no multiple profiles).
 46. 📋 Weekly/daily challenge run with a fixed seed and modifier set.
 47. 📋 Telemetry-free local balance dashboard (dev-only: weapon pick-rate / win-rate tracking in `localStorage` to guide future balance passes).
-48. 📋 Formal QA pass: automated headless-browser smoke test script committed to the repo (this session's Playwright scripts were scratch — worth keeping one as a real regression check).
-49. 📋 Export/import save data (JSON download/upload) so progress survives a browser data clear.
+48. ✅ **Automated smoke test committed to the repo** — `tests/smoke.mjs` (Playwright) drives menu → settings → an Endless Mode run through a wave-shop and death → end screen, asserting on each step. Documented in the README as the one place in the repo with an external dependency, kept out of the zero-dependency game runtime on purpose.
+49. ✅ **Export/import save data** — Settings screen has Export Save (downloads meta-progression + settings as one JSON file) and Import Save (file picker, validates and restores both) so progress survives a browser data clear or moves to another device.
 50. 📋 Config-driven enemy/weapon balance (move magic numbers in `enemyData.js`/`weapons.js` into a single tunable table for faster iteration).
 
 ## 3. What shipped
@@ -116,7 +116,15 @@ Charges passive (refactored the player's dash from single-cooldown to a proper
 multi-charge system), and seeded runs (reusing the codebase's existing single `rng()`
 chokepoint in `utils.js`, with the determinism caveat stated honestly above).
 
-25 of the 50 items are now implemented and verified end-to-end in real headless-browser
-sessions (screenshots + state assertions, not just `node --check`). The remaining 25 are
-scored and described above for prioritization — each names the specific system it touches
-and, where relevant, which researched game it came from.
+**Pass 3** (7 more items): weapon projectile trails, a background parallax star layer,
+a biome-tinted screen edge, rebindable movement/dash/pause keys (with permanent
+arrow/Shift/P fallbacks so rebinding can't lock anyone out), a lean 9-milestone
+achievements system, save export/import, and — since this pass also touched a lot of
+surface area — an automated smoke test committed to the repo as a real regression check
+rather than another one-off scratch script.
+
+32 of the 50 items are now implemented and verified end-to-end in real headless-browser
+sessions (screenshots + state assertions, not just `node --check`), and there's now a
+committed, repeatable smoke test (`tests/smoke.mjs`) instead of only ad hoc verification
+scripts. The remaining 18 are scored and described above for prioritization — each names
+the specific system it touches and, where relevant, which researched game it came from.

@@ -1,6 +1,7 @@
 import { WEAPONS } from './weapons.js';
 import { PASSIVES, TIER_COLORS } from './upgrades.js';
 import { META_UPGRADES, upgradeCost } from './meta.js';
+import { ACHIEVEMENTS } from './achievements.js';
 import { formatTime, clamp } from './utils.js';
 
 const ICONS = {
@@ -35,6 +36,15 @@ const NODE_ICONS = {
   rest: { glyph: '♥', color: '#5ee6ff' },
   boss: { glyph: '★', color: '#ff5e8a' },
 };
+
+const KEY_LABELS = { Space: 'Space', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc' };
+function keyLabel(code) {
+  if (!code) return '—';
+  if (KEY_LABELS[code]) return KEY_LABELS[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  return code;
+}
 
 function iconFor(id) { return ICONS[id] || { glyph: '?', color: '#fff' }; }
 function nodeIconFor(type) { return NODE_ICONS[type] || { glyph: '?', color: '#fff' }; }
@@ -158,6 +168,7 @@ class UI {
       <div><b>${meta.stats.bestWave || 0}</b>Best Wave</div>
       <div><b>${meta.stats.bestLevel}</b>Best Level</div>
       <div><b>${meta.gold}</b>Gold</div>
+      <div><b>${(meta.achievements || []).length}/${ACHIEVEMENTS.length}</b>Achievements</div>
     `;
     this.renderHistory(meta.history || []);
   }
@@ -315,6 +326,48 @@ class UI {
     el.appendChild(this._settingsRow('Difficulty', this._toggleGroup(
       [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], settings.difficulty,
       (v) => { onChange('difficulty', v); this.renderSettings(settings, onChange); })));
+
+    const heading = document.createElement('div');
+    heading.className = 'settings-subheading';
+    heading.textContent = 'Controls (arrows / Shift / P always still work)';
+    el.appendChild(heading);
+    const labels = { up: 'Move Up', down: 'Move Down', left: 'Move Left', right: 'Move Right', dash: 'Dash', pause: 'Pause' };
+    for (const action of Object.keys(labels)) {
+      el.appendChild(this._settingsRow(labels[action], this._keybindButton(settings.keybinds[action], (code) => {
+        onChange(`keybind:${action}`, code);
+        this.renderSettings(settings, onChange);
+      })));
+    }
+
+    const saveRow = document.createElement('div');
+    saveRow.className = 'settings-row';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn';
+    saveBtn.textContent = 'Export Save';
+    saveBtn.addEventListener('click', () => onChange('exportSave', null));
+    const importBtn = document.createElement('button');
+    importBtn.className = 'btn';
+    importBtn.textContent = 'Import Save';
+    importBtn.addEventListener('click', () => onChange('importSave', null));
+    saveRow.appendChild(saveBtn);
+    saveRow.appendChild(importBtn);
+    el.appendChild(saveRow);
+  }
+
+  _keybindButton(currentCode, onCaptured) {
+    const btn = document.createElement('button');
+    btn.className = 'btn toggle-opt';
+    btn.textContent = keyLabel(currentCode);
+    btn.addEventListener('click', () => {
+      btn.textContent = 'Press a key…';
+      const capture = (ev) => {
+        ev.preventDefault();
+        window.removeEventListener('keydown', capture, true);
+        onCaptured(ev.code);
+      };
+      window.addEventListener('keydown', capture, true);
+    });
+    return btn;
   }
 
   _settingsRow(labelText, controlEl) {
@@ -349,9 +402,11 @@ class UI {
 
   showPause() { this.hideAllScreens(); this.show('screen-pause'); }
 
-  showEnd(victory, stats) {
+  showEnd(victory, stats, unlockedAchievements = []) {
     this.hideAllScreens();
     this.show('screen-end');
+    const prevBanner = this.el.endStats.parentElement.querySelector('.achievement-banner');
+    if (prevBanner) prevBanner.remove();
     const endless = stats.mode === 'endless';
     this.el.endTitle.textContent = victory ? 'Run Complete!' : (endless ? 'Overwhelmed...' : 'You Fell...');
     this.el.endTitle.style.color = victory ? '#7CFC9A' : '#ff5e8a';
@@ -366,6 +421,12 @@ class UI {
       <div><b>${stats.goldEarned}</b>Gold Earned</div>
       <div><b>${stats.seed}</b>Seed</div>
     `;
+    if (unlockedAchievements.length) {
+      const banner = document.createElement('div');
+      banner.className = 'achievement-banner';
+      banner.innerHTML = unlockedAchievements.map(a => `<div>🏆 <b>${a.name}</b> — ${a.desc}</div>`).join('');
+      this.el.endStats.insertAdjacentElement('afterend', banner);
+    }
   }
 }
 

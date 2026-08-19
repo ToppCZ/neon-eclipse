@@ -7,8 +7,9 @@ import { PickupManager } from './pickups.js';
 import { ParticleSystem } from './particles.js';
 import { BOSS_TYPES, BIOMES } from './enemyData.js';
 import { generateRun, currentAct, isLastAct } from './runMap.js';
-import { loadMeta, getMetaBonuses, purchaseUpgrade, recordRunResult } from './meta.js';
+import { loadMeta, saveMeta, getMetaBonuses, purchaseUpgrade, recordRunResult } from './meta.js';
 import { loadSettings, saveSettings, diffMultipliers } from './settings.js';
+import { checkAchievements } from './achievements.js';
 import { statusGlowColor } from './statusEffects.js';
 import { audio } from './audio.js';
 import { ui } from './ui.js';
@@ -72,12 +73,65 @@ export class Game {
   }
 
   onSettingChange(key, value) {
+    if (key === 'exportSave') { this.exportSave(); return; }
+    if (key === 'importSave') { this.importSave(); return; }
+    if (key.startsWith('keybind:')) {
+      this.settings.keybinds[key.slice('keybind:'.length)] = value;
+      saveSettings(this.settings);
+      return;
+    }
     this.settings[key] = value;
     saveSettings(this.settings);
     if (key === 'musicVolume') audio.setMusicVolume(value);
     else if (key === 'sfxVolume') audio.setSfxVolume(value);
     else if (key === 'reducedMotion') this.particles.reduced = value;
     else if (key === 'difficulty') this.enemyManager.diff = diffMultipliers(value);
+  }
+
+  // Downloads meta-progression + settings as one JSON file so progress
+  // survives a browser data clear or moves to another device/browser.
+  exportSave() {
+    const payload = { version: 1, meta: this.meta, settings: this.settings };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'neon-eclipse-save.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  importSave() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const payload = JSON.parse(String(reader.result));
+          if (payload.meta) { this.meta = payload.meta; saveMeta(this.meta); }
+          if (payload.settings) {
+            this.settings = { ...loadSettings(), ...payload.settings };
+            saveSettings(this.settings);
+            audio.setMusicVolume(this.settings.musicVolume);
+            audio.setSfxVolume(this.settings.sfxVolume);
+            this.particles.reduced = this.settings.reducedMotion;
+            this.enemyManager.diff = diffMultipliers(this.settings.difficulty);
+          }
+          ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v));
+          window.alert('Save imported.');
+        } catch {
+          window.alert('That file could not be read as a Neon Eclipse save.');
+        }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
   }
 
   // ---------------- Menu wiring ----------------
@@ -137,6 +191,11 @@ export class Game {
     this.state = 'menu';
     audio.stopMusic();
     ui.showMenu(this.meta);
+    this.applyBiomeTint(null);
+  }
+
+  applyBiomeTint(biome) {
+    document.documentElement.style.setProperty('--biome-tint', biome ? biome.accent + '26' : 'transparent');
   }
 
   runLabel() {
@@ -200,6 +259,7 @@ export class Game {
     this.nodeBiome = BIOMES[0];
     this.nodeActNumber = this.endlessTier(1);
     this.nodeElapsed = 0;
+    this.applyBiomeTint(this.nodeBiome);
 
     this.camX = this.player.x; this.camY = this.player.y;
     this.hazards = this.generateHazards(this.nodeBiome, this.player.x, this.player.y);
@@ -252,6 +312,7 @@ export class Game {
     this.nodeElapsed = 0;
     this.nodeBiome = BIOMES[(this.endless.wave - 1) % BIOMES.length];
     this.nodeActNumber = this.endlessTier(this.endless.wave);
+    this.applyBiomeTint(this.nodeBiome);
     this.hazards = this.generateHazards(this.nodeBiome, this.player.x, this.player.y);
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.12);
     this.spawnWaveThreat();
@@ -265,6 +326,7 @@ export class Game {
   goToMap() {
     this.state = 'map';
     ui.showMap(this.run, (node) => this.selectNode(node));
+    this.applyBiomeTint(null);
   }
 
   selectNode(node) {
@@ -289,6 +351,7 @@ export class Game {
     this.nodeType = node.type;
     this.nodeBiome = node.biome;
     this.nodeActNumber = node.biome.act;
+    this.applyBiomeTint(this.nodeBiome);
     this.nodeElapsed = 0;
     this.nodeDuration = node.type === 'combat' ? randRange(100, 130) : null;
 
@@ -467,8 +530,10 @@ export class Game {
       };
     }
     recordRunResult(this.meta, stats);
+    const unlocked = checkAchievements(this.meta, stats);
+    if (unlocked.length) saveMeta(this.meta);
     ui.setHudVisible(false);
-    ui.showEnd(victory, stats);
+    ui.showEnd(victory, stats, unlocked);
   }
 
   // ---------------- Event callbacks ----------------
@@ -649,7 +714,34 @@ export class Game {
     }
   }
 
+  // Sparse, slow-scrolling dot field behind the grid — cheap depth cue.
+  // Deterministic per-cell jitter (sine hash) instead of stored star data
+  // so it needs no state and never desyncs from the camera.
+  drawParallaxStars(ctx, camX, camY) {
+    const spacing = 140, parallax = 0.35;
+    const px = camX * parallax, py = camY * parallax;
+    const halfW = this.width / 2, halfH = this.height / 2;
+    const startX = -halfW - ((px + halfW) % spacing);
+    const startY = -halfH - ((py + halfH) % spacing);
+    ctx.save();
+    for (let x = startX; x < halfW; x += spacing) {
+      for (let y = startY; y < halfH; y += spacing) {
+        const worldX = x + px, worldY = y + py;
+        const jx = frac(Math.sin(worldX * 12.9898 + worldY * 78.233) * 43758.5453);
+        const jy = frac(Math.cos(worldX * 93.9898 + worldY * 67.345) * 24634.634);
+        const sx = x + jx * spacing * 0.7, sy = y + jy * spacing * 0.7;
+        ctx.globalAlpha = 0.12 + jy * 0.28;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.6 + jx * 1.1, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   drawBackground(ctx, camX, camY) {
+    this.drawParallaxStars(ctx, camX, camY);
     const biome = this.nodeBiome;
     const gridColor = biome ? biome.grid : 'rgba(94, 230, 255, 0.06)';
     const accent = biome ? biome.accent : '#c98cff';
@@ -795,3 +887,5 @@ export class Game {
     ctx.restore();
   }
 }
+
+function frac(v) { return v - Math.floor(v); }
