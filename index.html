@@ -40,13 +40,24 @@
     <div class="menu-card">
       <h1 class="title">NEON <span>ECLIPSE</span></h1>
       <p class="subtitle">Survive the swarm. Outgrow the dark.</p>
-      <div class="menu-buttons">
-        <button id="btn-play" class="btn btn-primary">Start Run</button>
-        <button id="btn-endless" class="btn">Endless Mode</button>
-        <button id="btn-daily" class="btn">Daily Challenge</button>
-        <button id="btn-shop" class="btn">Upgrades</button>
-        <button id="btn-leaderboard" class="btn">Leaderboard</button>
-        <button id="btn-settings" class="btn">Settings</button>
+      <div class="mode-buttons">
+        <button id="btn-play" class="btn btn-primary mode-btn">
+          <span class="mode-glyph">▶</span>
+          <span class="mode-text"><b>Start Run</b><small>Story campaign across biomes and bosses</small></span>
+        </button>
+        <button id="btn-endless" class="btn mode-btn">
+          <span class="mode-glyph">∞</span>
+          <span class="mode-text"><b>Endless Mode</b><small>Survive escalating waves — how far can you go?</small></span>
+        </button>
+        <button id="btn-daily" class="btn mode-btn">
+          <span class="mode-glyph">📅</span>
+          <span class="mode-text"><b>Daily Challenge</b><small>Same seed for everyone, resets at midnight UTC</small></span>
+        </button>
+      </div>
+      <div class="menu-buttons secondary-row">
+        <button id="btn-shop" class="btn icon-btn" title="Upgrades"><span>⚙</span>Upgrades</button>
+        <button id="btn-leaderboard" class="btn icon-btn" title="Leaderboard"><span>🏆</span>Leaderboard</button>
+        <button id="btn-settings" class="btn icon-btn" title="Settings"><span>☰</span>Settings</button>
       </div>
       <div class="menu-stats" id="menu-stats"></div>
       <div class="history-list" id="menu-history"></div>
@@ -105,6 +116,7 @@
   <div id="screen-settings" class="screen hidden">
     <div class="menu-card wide">
       <h2>Settings</h2>
+      <div id="settings-tabs" class="settings-tabs"></div>
       <div id="settings-list" class="settings-list"></div>
       <div class="menu-buttons" style="flex-direction:row; gap:10px;">
         <button id="btn-balance" class="btn btn-ghost">Balance Stats (dev)</button>

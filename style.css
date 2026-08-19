@@ -314,6 +314,38 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
 
 .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
 
+.mode-buttons { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.mode-btn {
+  display: flex; align-items: center; gap: 14px;
+  text-align: left;
+  padding: 12px 18px;
+}
+.mode-glyph {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+}
+.btn-primary .mode-glyph { background: rgba(6,7,20,0.25); }
+.mode-text { display: flex; flex-direction: column; gap: 2px; }
+.mode-text b { font-size: 15px; }
+.mode-text small { font-size: 11.5px; font-weight: 500; opacity: 0.75; letter-spacing: 0.2px; }
+
+.secondary-row { flex-direction: row; gap: 6px; margin-bottom: 14px; }
+.icon-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 11px;
+  padding: 10px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.icon-btn span { font-size: 13px; flex-shrink: 0; }
+
 .btn {
   padding: 13px 20px;
   border-radius: 10px;
@@ -434,14 +466,19 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
 }
 
 /* ---------- Settings ---------- */
-.settings-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; max-height: 56vh; overflow-y: auto; padding-right: 4px; }
+.settings-tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--panel-border); padding-bottom: 14px; }
+.settings-tabs .btn { padding: 8px 18px; font-size: 13px; }
+.settings-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; min-height: 300px; max-height: 56vh; overflow-y: auto; padding-right: 4px; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
 .settings-row label { font-size: 13px; color: var(--text-dim); font-weight: 600; flex-shrink: 0; }
 .settings-row input[type="range"] { width: 160px; accent-color: var(--cyan); }
+.settings-slider-wrap { display: flex; align-items: center; gap: 10px; }
+.settings-slider-value { font-size: 12px; color: var(--text-dim); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .settings-toggle-group { display: flex; gap: 6px; }
 .settings-toggle-group .btn { padding: 7px 12px; font-size: 12px; }
 .settings-toggle-group .btn.active { background: linear-gradient(90deg, var(--cyan), var(--purple)); color: #060714; border-color: transparent; }
 .settings-subheading { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin: 6px 0 -4px; text-align: left; }
+.settings-hint { font-size: 12px; color: var(--text-dim); text-align: left; margin: 0 0 4px; }
 
 /* ---------- Run history (main menu) ---------- */
 .history-list { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 0; max-height: 130px; overflow-y: auto; }
@@ -491,4 +528,8 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
   .character-list { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .menu-card { padding: 26px 20px; }
   .title { font-size: 32px; }
+  .secondary-row { flex-direction: column; }
+  .icon-btn { white-space: normal; }
+  .settings-row { flex-wrap: wrap; }
+  .settings-row input[type="range"] { width: 120px; }
 }

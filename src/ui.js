@@ -78,7 +78,7 @@ class UI {
       'screen-choice', 'choice-title', 'choice-list',
       'screen-map', 'map-header', 'map-choices',
       'screen-node-shop', 'node-shop-cores', 'node-shop-list', 'btn-node-shop-reroll', 'node-shop-reroll-cost', 'btn-node-shop-continue',
-      'screen-settings', 'settings-list', 'btn-back-settings',
+      'screen-settings', 'settings-tabs', 'settings-list', 'btn-back-settings',
       'screen-pause', 'btn-resume', 'btn-pause-settings', 'btn-quit',
       'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu', 'btn-download-card',
       'mute-btn',
@@ -92,6 +92,7 @@ class UI {
 
     this.bindWeaponTrayTooltip();
     if (this.el.btnDownloadCard) this.el.btnDownloadCard.addEventListener('click', () => this.downloadRunCard());
+    this._settingsTab = 'general';
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
@@ -378,71 +379,95 @@ class UI {
     this.renderSettings(settings, onChange, slotsInfo);
   }
 
+  static SETTINGS_TABS = [
+    ['general', 'General'],
+    ['controls', 'Controls'],
+    ['data', 'Save Data'],
+  ];
+
   renderSettings(settings, onChange, slotsInfo = { slots: ['default'], active: 'default' }) {
-    const el = this.el.settingsList;
-    el.innerHTML = '';
-
-    const slotHeading = document.createElement('div');
-    slotHeading.className = 'settings-subheading';
-    slotHeading.textContent = 'Save Slot';
-    el.appendChild(slotHeading);
-    const slotRow = document.createElement('div');
-    slotRow.className = 'settings-row';
-    slotRow.appendChild(this._toggleGroup(
-      slotsInfo.slots.map((s) => [s, s]), slotsInfo.active,
-      (v) => onChange('switchSlot', v)));
-    const newSlotBtn = document.createElement('button');
-    newSlotBtn.className = 'btn';
-    newSlotBtn.textContent = '+ New';
-    newSlotBtn.addEventListener('click', () => onChange('newSlot', null));
-    slotRow.appendChild(newSlotBtn);
-    el.appendChild(slotRow);
-    el.appendChild(this._settingsRow('Music Volume', this._slider(Math.round(settings.musicVolume * 100), (v) => onChange('musicVolume', v / 100))));
-    el.appendChild(this._settingsRow('SFX Volume', this._slider(Math.round(settings.sfxVolume * 100), (v) => onChange('sfxVolume', v / 100))));
-    el.appendChild(this._settingsRow('Screen Shake', this._toggleGroup(
-      [[0, 'Off'], [0.5, 'Reduced'], [1, 'Full']], settings.screenShake,
-      (v) => { onChange('screenShake', v); this.renderSettings(settings, onChange, slotsInfo); })));
-    el.appendChild(this._settingsRow('Reduced Motion', this._toggleGroup(
-      [[false, 'Off'], [true, 'On']], settings.reducedMotion,
-      (v) => { onChange('reducedMotion', v); this.renderSettings(settings, onChange, slotsInfo); })));
-    el.appendChild(this._settingsRow('Show Hitbox', this._toggleGroup(
-      [[false, 'Off'], [true, 'On']], settings.showHitbox,
-      (v) => { onChange('showHitbox', v); this.renderSettings(settings, onChange, slotsInfo); })));
-    el.appendChild(this._settingsRow('Colorblind Mode', this._toggleGroup(
-      [[false, 'Off'], [true, 'On']], settings.colorblindMode,
-      (v) => { onChange('colorblindMode', v); this.renderSettings(settings, onChange, slotsInfo); })));
-    el.appendChild(this._settingsRow('Manual Aim (Shard Cannon)', this._toggleGroup(
-      [[false, 'Off'], [true, 'On']], settings.manualAim,
-      (v) => { onChange('manualAim', v); this.renderSettings(settings, onChange, slotsInfo); })));
-    el.appendChild(this._settingsRow('Difficulty', this._toggleGroup(
-      [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], settings.difficulty,
-      (v) => { onChange('difficulty', v); this.renderSettings(settings, onChange, slotsInfo); })));
-
-    const heading = document.createElement('div');
-    heading.className = 'settings-subheading';
-    heading.textContent = 'Controls (arrows / Shift / P always still work)';
-    el.appendChild(heading);
-    const labels = { up: 'Move Up', down: 'Move Down', left: 'Move Left', right: 'Move Right', dash: 'Dash', ultimate: 'Ultimate', pause: 'Pause' };
-    for (const action of Object.keys(labels)) {
-      el.appendChild(this._settingsRow(labels[action], this._keybindButton(settings.keybinds[action], (code) => {
-        onChange(`keybind:${action}`, code);
+    const tabsEl = this.el.settingsTabs;
+    if (tabsEl) {
+      tabsEl.innerHTML = '';
+      tabsEl.appendChild(this._toggleGroup(UI.SETTINGS_TABS, this._settingsTab, (v) => {
+        this._settingsTab = v;
         this.renderSettings(settings, onChange, slotsInfo);
-      })));
+      }));
     }
 
-    const saveRow = document.createElement('div');
-    saveRow.className = 'settings-row';
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'btn';
-    saveBtn.textContent = 'Export Save';
-    saveBtn.addEventListener('click', () => onChange('exportSave', null));
-    const importBtn = document.createElement('button');
-    importBtn.className = 'btn';
-    importBtn.textContent = 'Import Save';
-    importBtn.addEventListener('click', () => onChange('importSave', null));
-    saveRow.appendChild(saveBtn);
-    saveRow.appendChild(importBtn);
-    el.appendChild(saveRow);
+    const el = this.el.settingsList;
+    el.innerHTML = '';
+    const tab = this._settingsTab;
+    const rerender = () => this.renderSettings(settings, onChange, slotsInfo);
+
+    if (tab === 'general') {
+      el.appendChild(this._settingsRow('Music Volume', this._sliderWithValue(Math.round(settings.musicVolume * 100), (v) => onChange('musicVolume', v / 100))));
+      el.appendChild(this._settingsRow('SFX Volume', this._sliderWithValue(Math.round(settings.sfxVolume * 100), (v) => onChange('sfxVolume', v / 100))));
+      el.appendChild(this._settingsRow('Screen Shake', this._toggleGroup(
+        [[0, 'Off'], [0.5, 'Reduced'], [1, 'Full']], settings.screenShake,
+        (v) => { onChange('screenShake', v); rerender(); })));
+      el.appendChild(this._settingsRow('Reduced Motion', this._toggleGroup(
+        [[false, 'Off'], [true, 'On']], settings.reducedMotion,
+        (v) => { onChange('reducedMotion', v); rerender(); })));
+      el.appendChild(this._settingsRow('Show Hitbox', this._toggleGroup(
+        [[false, 'Off'], [true, 'On']], settings.showHitbox,
+        (v) => { onChange('showHitbox', v); rerender(); })));
+      el.appendChild(this._settingsRow('Colorblind Mode', this._toggleGroup(
+        [[false, 'Off'], [true, 'On']], settings.colorblindMode,
+        (v) => { onChange('colorblindMode', v); rerender(); })));
+      el.appendChild(this._settingsRow('Manual Aim (Shard Cannon)', this._toggleGroup(
+        [[false, 'Off'], [true, 'On']], settings.manualAim,
+        (v) => { onChange('manualAim', v); rerender(); })));
+      el.appendChild(this._settingsRow('Difficulty', this._toggleGroup(
+        [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], settings.difficulty,
+        (v) => { onChange('difficulty', v); rerender(); })));
+    } else if (tab === 'controls') {
+      const hint = document.createElement('div');
+      hint.className = 'settings-hint';
+      hint.textContent = 'Arrow keys, Shift (dash) and P (pause) always work as fallbacks, even if rebound below.';
+      el.appendChild(hint);
+      const labels = { up: 'Move Up', down: 'Move Down', left: 'Move Left', right: 'Move Right', dash: 'Dash', ultimate: 'Ultimate', pause: 'Pause' };
+      for (const action of Object.keys(labels)) {
+        el.appendChild(this._settingsRow(labels[action], this._keybindButton(settings.keybinds[action], (code) => {
+          onChange(`keybind:${action}`, code);
+          rerender();
+        })));
+      }
+    } else if (tab === 'data') {
+      const slotHeading = document.createElement('div');
+      slotHeading.className = 'settings-subheading';
+      slotHeading.textContent = 'Save Slot';
+      el.appendChild(slotHeading);
+      const slotRow = document.createElement('div');
+      slotRow.className = 'settings-row';
+      slotRow.appendChild(this._toggleGroup(
+        slotsInfo.slots.map((s) => [s, s]), slotsInfo.active,
+        (v) => onChange('switchSlot', v)));
+      const newSlotBtn = document.createElement('button');
+      newSlotBtn.className = 'btn';
+      newSlotBtn.textContent = '+ New';
+      newSlotBtn.addEventListener('click', () => onChange('newSlot', null));
+      slotRow.appendChild(newSlotBtn);
+      el.appendChild(slotRow);
+
+      const backupHeading = document.createElement('div');
+      backupHeading.className = 'settings-subheading';
+      backupHeading.textContent = 'Backup';
+      el.appendChild(backupHeading);
+      const saveRow = document.createElement('div');
+      saveRow.className = 'settings-row';
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'btn';
+      saveBtn.textContent = 'Export Save';
+      saveBtn.addEventListener('click', () => onChange('exportSave', null));
+      const importBtn = document.createElement('button');
+      importBtn.className = 'btn';
+      importBtn.textContent = 'Import Save';
+      importBtn.addEventListener('click', () => onChange('importSave', null));
+      saveRow.appendChild(saveBtn);
+      saveRow.appendChild(importBtn);
+      el.appendChild(saveRow);
+    }
   }
 
   _keybindButton(currentCode, onCaptured) {
@@ -476,6 +501,18 @@ class UI {
     input.type = 'range'; input.min = '0'; input.max = '100'; input.value = String(value);
     input.addEventListener('input', () => onInput(Number(input.value)));
     return input;
+  }
+
+  _sliderWithValue(value, onInput) {
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-slider-wrap';
+    const readout = document.createElement('span');
+    readout.className = 'settings-slider-value';
+    readout.textContent = `${value}%`;
+    const input = this._slider(value, (v) => { readout.textContent = `${v}%`; onInput(v); });
+    wrap.appendChild(input);
+    wrap.appendChild(readout);
+    return wrap;
   }
 
   _toggleGroup(options, current, onPick) {
