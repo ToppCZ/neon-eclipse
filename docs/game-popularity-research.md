@@ -103,6 +103,47 @@ Gaps worth considering given the trend data:
 4. Big-budget shooters/battle royale are *losing* relative playtime share — sandbox and
    choice-driven genres are gaining it instead.
 
+## 6. Follow-up: narrowing to 2D, cheap-to-art, endless + buy-upgrades
+
+Constraint from discussion: the target is a **2D game, low art burden, endless (not a fixed
+run/win-state), with progression driven by buying upgrades**. That points at two genres, both
+backed by 2026 research and both compatible with Neon Eclipse's existing no-external-assets
+Canvas/WebAudio tech:
+
+### Idle / incremental games
+- Proven that minimal art is not a liability: **Cookie Clicker** is the canonical proof point —
+  no complex graphics, no story, no multiplayer, and it's still one of the most durable games in
+  the genre. Clicker Heroes is described the same way: "simple 2D artwork, bright colorful UI,
+  easy to understand."
+- 2026 trend within the genre: developers are layering in more sophisticated mechanics on top of
+  the simple core — better visual feedback, prestige systems, skill trees (Idle Skiller: "hundreds
+  of items, dozens of zones, an extensive skill tree") — i.e. depth is added through *systems*,
+  not art budget.
+- Core loop is exactly "endless + buy upgrades to progress further": earn currency → spend on
+  upgrades → higher earn rate / power → repeat, often with a prestige/reset layer for long-term
+  replayability (NGU Idle, DodecaDragons, Realm Grinder).
+
+### Endless bullet-heaven / survival mode
+- This is the smaller pivot for Neon Eclipse specifically: keep the existing auto-fire combat,
+  elemental system, and `meta.js` persistent shop, but replace (or add alongside) the fixed
+  3-act/boss run structure with an **endless wave-survival mode** where in-run Cores (or a new
+  meta-currency) buy permanent power-ups between attempts, and the "win condition" is just
+  "how far/long can you get" — matching the requested endless + buy-upgrades loop while staying
+  in genre.
+- This lines up with genre data above: co-op/endless variants are the fastest-growing bullet-heaven
+  sub-genre in 2026, and the format's whole appeal is "simple 2D shapes/sprites, no complex art,"
+  which is already true of Neon Eclipse's runtime-generated Canvas visuals.
+
+### Recommendation
+
+The lowest-risk direction, given the existing codebase, is a **hybrid**: keep bullet-heaven combat
+as the moment-to-moment gameplay, but restructure the meta-layer around an idle-game-style
+progression loop — endless survival waves feeding a currency that buys permanent upgrades
+(stat multipliers, unlocks, new weapons/passives), with a prestige/reset mechanic for long-term
+replayability. This satisfies all three asked-for constraints (2D, cheap art, endless +
+buy-upgrades) while reusing ~everything already built (`enemies.js`, `weapons.js`, `upgrades.js`,
+`meta.js`, procedural Canvas/WebAudio) rather than starting a new game from scratch.
+
 ## Sources
 
 - [GAMIVO Unveils Analysis on 2026's Most Popular Video Game Genres](https://www.globenewswire.com/news-release/2026/04/03/3268097/0/en/gamivo-unveils-analysis-on-2026-s-most-popular-video-game-genres.html)
@@ -115,3 +156,7 @@ Gaps worth considering given the trend data:
 - [The Best New Survivors-Like Games in 2026 (Choost Games)](https://choostgames.com/blog/new-survivors-like-games-2026/)
 - [The 5 Most Innovative Roguelites of 2026 (Entalto Studios)](https://entaltostudios.com/the-5-most-innovative-roguelites-of-2026/)
 - [New Roguelikes and Roguelites in August 2026: The Monthly Update (Rogueliker)](https://rogueliker.com/new-roguelikes-and-roguelites-in-august-2026-the-monthly-update/)
+- [Best Idle Game in 2026: What to Play for Endless Progression](https://blog.clickerheroes.com/best-idle-game-2025/)
+- [20 Best Idle Games 2026 – Top Clickers, RPGs & Sims](https://www.eneba.com/hub/games/best-idle-games/)
+- [Top 10 Incremental & Idle Games — June 2026](https://www.topincrementalgames.com/guides/top-10-incremental-idle-games-june-2026)
+- [Best 2D Games 2025–2026: Top Titles You Must Play](https://www.techwhoop.com/gaming/best-2d-games-2025-2026-guide/)
