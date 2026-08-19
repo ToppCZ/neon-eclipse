@@ -1189,6 +1189,14 @@ export class Game {
     ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, 18, p.char.color);
     drawShipHull(ctx, shipShape);
     ctx.fill();
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = p.char.accent || '#ffffff';
+    ctx.lineWidth = 0.75;
+    ctx.shadowBlur = 0;
+    drawShipHull(ctx, shipShape);
+    ctx.stroke();
+    ctx.restore();
 
     // Panel line: a single highlight stroke down the spine reads as a hull
     // seam rather than a flat cutout — cheap but sells "built", not drawn.
