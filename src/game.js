@@ -1,4 +1,4 @@
-import { clamp, randRange, TAU, rng, seedRng, hashSeed, WORLD_HALF, angleTo, shadeFill } from './utils.js';
+import { clamp, randRange, TAU, rng, seedRng, hashSeed, WORLD_HALF, angleTo, shadeFill, texturePattern } from './utils.js';
 import { Player, getCharacter, listCharacters, getRelic, listRelics } from './player.js';
 import { EnemyManager, FROST_AURA_RADIUS } from './enemies.js';
 import { WeaponSystem, WEAPONS } from './weapons.js';
@@ -1189,6 +1189,20 @@ export class Game {
     ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, 18, p.char.color);
     drawShipHull(ctx, shipShape);
     ctx.fill();
+
+    // Brushed-hull texture grain, clipped exactly to the hull silhouette
+    // (drawShipHull is pure path-building, so re-running it is safe here).
+    if (p.hurtFlash <= 0) {
+      ctx.save();
+      drawShipHull(ctx, shipShape);
+      ctx.clip();
+      ctx.globalAlpha = 0.3;
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.fillStyle = texturePattern(ctx, p.char.color, 'hull');
+      ctx.fillRect(-20, -20, 40, 40);
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.globalAlpha = 0.6;
     ctx.strokeStyle = p.char.accent || '#ffffff';

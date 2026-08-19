@@ -396,7 +396,7 @@ export class WeaponSystem {
         color: slot.evolved ? '#ffd54a' : '#5ee6ff', kind: 'bullet', evolvedSplit: slot.evolved,
       });
     }
-    if (this.audio) this.audio.shoot();
+    if (this.audio) this.audio.shoot('shard');
 
     if (this.hasCombo('splinterBarrage')) {
       slot._comboShotCount = (slot._comboShotCount || 0) + 1;
@@ -461,7 +461,7 @@ export class WeaponSystem {
         targetRef: target, turnRate: stats.turnRate, speed: stats.speed,
       });
     }
-    if (this.audio) this.audio.shoot();
+    if (this.audio) this.audio.shoot('missile');
   }
 
   fireChainLightning(slot, stats, player) {
@@ -502,7 +502,7 @@ export class WeaponSystem {
       damage: stats.damage, damageType: WEAPONS.ricochetBlade.damageType, pierce: 0, radius: 7, life: 5,
       color: slot.evolved ? '#ffd54a' : '#5ee6ff', kind: 'ricochet', bounces: stats.bounces,
     });
-    if (this.audio) this.audio.shoot();
+    if (this.audio) this.audio.shoot('ricochet');
   }
 
   // Friendly companions tracked on the slot itself (like orbitDrones' angle

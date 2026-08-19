@@ -103,6 +103,62 @@ export function shadeFill(ctx, radius, color) {
   return g;
 }
 
+// Real generated surface texture — not a gradient — drawn once to a small
+// offscreen tile and cached as a repeating CanvasPattern, since generating
+// per-pixel noise every frame would be far too slow. 'hull' gives a
+// mechanical brushed-metal/panel-hatch look (ships, bosses, armored
+// enemies); 'organic' gives a mottled scale/chitin look (bio enemies).
+// Caller draws this at low alpha over an existing fill as a grain pass.
+const _patternCache = new Map();
+export function texturePattern(ctx, color, kind = 'organic') {
+  const key = kind + color;
+  let cached = _patternCache.get(key);
+  if (cached) return cached;
+
+  const size = 28;
+  const tile = document.createElement('canvas');
+  tile.width = size; tile.height = size;
+  const tctx = tile.getContext('2d');
+  const [r, g, b] = hexToRgb(color);
+  const dark = `rgba(${Math.round(r * 0.35)},${Math.round(g * 0.35)},${Math.round(b * 0.35)},0.9)`;
+  const light = `rgba(255,255,255,0.5)`;
+
+  if (kind === 'hull') {
+    // Diagonal brushed-panel hatching with a couple of seam lines.
+    tctx.strokeStyle = dark;
+    tctx.lineWidth = 1;
+    for (let i = -size; i < size * 2; i += 4) {
+      tctx.beginPath();
+      tctx.moveTo(i, 0);
+      tctx.lineTo(i + size, size);
+      tctx.stroke();
+    }
+    tctx.strokeStyle = light;
+    tctx.globalAlpha = 0.35;
+    tctx.beginPath();
+    tctx.moveTo(0, size * 0.3); tctx.lineTo(size, size * 0.3);
+    tctx.moveTo(0, size * 0.75); tctx.lineTo(size, size * 0.75);
+    tctx.stroke();
+  } else {
+    // Overlapping scale/chitin blotches (deterministic pseudo-random via a
+    // fixed seed sequence, so the tile is stable across cache hits).
+    let seed = 1337;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * size, y = rnd() * size, rad = 2 + rnd() * 3;
+      tctx.fillStyle = rnd() > 0.5 ? dark : light;
+      tctx.globalAlpha = 0.25 + rnd() * 0.25;
+      tctx.beginPath();
+      tctx.ellipse(x, y, rad, rad * 0.7, rnd() * TAU, 0, TAU);
+      tctx.fill();
+    }
+  }
+
+  const pattern = ctx.createPattern(tile, 'repeat');
+  _patternCache.set(key, pattern);
+  return pattern;
+}
+
 export function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

@@ -1,4 +1,4 @@
-import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, rng, shadeFill, TAU } from './utils.js';
+import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, rng, shadeFill, texturePattern, TAU } from './utils.js';
 import { ENEMY_TYPES, BOSS_TYPES, DIFFICULTY_CURVE as DC } from './enemyData.js';
 import { applyBurn, applyPoison, applyShock, applyFrost, updateStatuses, clearStatuses, statusGlowColor } from './statusEffects.js';
 
@@ -533,6 +533,24 @@ export class EnemyManager {
       ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, e.radius, e.color);
       drawEnemyBody(ctx, e);
+
+      // Surface grain pass: a real generated texture tile (not a gradient),
+      // clipped to roughly the body's silhouette so it reads as material
+      // detail on the creature rather than flat color. Armored types get a
+      // brushed-metal hatch, everything else gets a mottled organic scale.
+      if (e.hurtFlash <= 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius * 1.02, 0, TAU);
+        ctx.clip();
+        ctx.globalAlpha = 0.3;
+        ctx.globalCompositeOperation = 'overlay';
+        const armoredId = e.isBoss ? e.bossId : (e.type && e.type.id);
+        const isArmored = armoredId === 'brute' || armoredId === 'warden' || armoredId === 'eclipse';
+        ctx.fillStyle = texturePattern(ctx, e.color, isArmored ? 'hull' : 'organic');
+        ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
+        ctx.restore();
+      }
       if (statusGlow) {
         ctx.strokeStyle = statusGlow;
         ctx.lineWidth = 2;
