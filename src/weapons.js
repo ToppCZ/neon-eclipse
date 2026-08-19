@@ -1,4 +1,5 @@
-import { Pool, clamp, dist, dist2, angleTo, randRange, TAU, WORLD_HALF } from './utils.js';
+import { Pool, clamp, dist, dist2, angleTo, randRange, rng, TAU, WORLD_HALF } from './utils.js';
+import { applyFrost } from './statusEffects.js';
 
 // ---- Weapon definitions -----------------------------------------------
 // getStats(level, player) returns the numbers a fire/update call needs.
@@ -114,6 +115,42 @@ export const WEAPONS = {
   },
 };
 
+// Weapon combos: own the listed weapons at the listed levels simultaneously
+// and get a real bonus — a build to aim for rather than picking blindly.
+// Each is implemented by hooking the trigger weapon's own fire method
+// (reusing the other weapon's existing fire logic) rather than a bolted-on
+// timer, so it reads as "these two weapons are actually working together."
+export const COMBOS = [
+  {
+    id: 'overloadDischarge', name: 'Overload Discharge',
+    weapons: [{ id: 'novaBurst', minLevel: 4 }, { id: 'chainLightning', minLevel: 4 }],
+    desc: 'Nova Burst detonations also unleash a Chain Lightning burst.',
+  },
+  {
+    id: 'splinterBarrage', name: 'Splinter Barrage',
+    weapons: [{ id: 'shardCannon', minLevel: 4 }, { id: 'ricochetBlade', minLevel: 4 }],
+    desc: 'Every 4th Shard Cannon shot also fires a Ricochet Blade.',
+  },
+  {
+    id: 'bioSynergy', name: 'Bio-Synergy',
+    weapons: [{ id: 'minionSpectral', minLevel: 4 }, { id: 'homingMissile', minLevel: 4 }],
+    desc: 'Spectral Minion strikes have a chance to also launch a Homing Missile.',
+  },
+  {
+    id: 'glacialSweep', name: 'Glacial Sweep',
+    weapons: [{ id: 'pulseBlade', minLevel: 4 }, { id: 'orbitDrones', minLevel: 4 }],
+    desc: "Pulse Blade's arc also chills everything it hits.",
+  },
+  {
+    id: 'elementalNexus', name: 'Elemental Nexus',
+    weapons: [
+      { id: 'orbitDrones', minLevel: 3 }, { id: 'novaBurst', minLevel: 3 },
+      { id: 'homingMissile', minLevel: 3 }, { id: 'chainLightning', minLevel: 3 },
+    ],
+    desc: '+20% damage to all weapons, plus a periodic elemental pulse around you.',
+  },
+];
+
 function makeBullet() {
   return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, damageType: 'physical', pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0, bouncesLeft: 0 };
 }
@@ -159,7 +196,27 @@ export class WeaponSystem {
     // a world-space point Game sets each frame from the mouse cursor.
     this.manualAimEnabled = false;
     this.aim = null;
+
+    // Combo state — see COMBOS above and computeCombos() below.
+    this.activeCombos = [];
+    this.nexusPulseTimer = 0;
+    this._onComboUnlocked = null;
   }
+
+  // Which combos are currently satisfied by owned weapon levels.
+  computeCombos() {
+    const active = [];
+    for (const combo of COMBOS) {
+      const ok = combo.weapons.every((w) => {
+        const s = this.getSlot(w.id);
+        return s && s.level >= w.minLevel;
+      });
+      if (ok) active.push(combo);
+    }
+    return active;
+  }
+
+  hasCombo(id) { return this.activeCombos.some((c) => c.id === id); }
 
   // Two build archetypes: "Physical Focus" (own both physical weapons) and
   // "Elemental Diversity" (own weapons across distinct non-physical types).
@@ -183,6 +240,8 @@ export class WeaponSystem {
     this.slots = [];
     this.bullets.clear();
     this.effects.clear();
+    this.activeCombos = [];
+    this.nexusPulseTimer = 0;
   }
 
   hasWeapon(id) { return this.slots.some(s => s.id === id); }
@@ -205,6 +264,7 @@ export class WeaponSystem {
   }
 
   checkEvolutions(player) {
+    const newlyEvolved = [];
     for (const slot of this.slots) {
       if (slot.evolved) continue;
       const def = WEAPONS[slot.id];
@@ -212,17 +272,29 @@ export class WeaponSystem {
         slot.evolved = true;
         this.particles.labelText(player.x, player.y - 40, `${def.evolvedName}!`, '#ffd54a');
         if (this.audio) this.audio.levelUp();
+        newlyEvolved.push({ slot, def });
       }
     }
+    return newlyEvolved;
   }
 
   update(dt, player) {
     this.synergy = this.computeSynergy();
+
+    const prevComboIds = new Set(this.activeCombos.map((c) => c.id));
+    this.activeCombos = this.computeCombos();
+    const newlyActive = this.activeCombos.filter((c) => !prevComboIds.has(c.id));
+    if (newlyActive.length && this._onComboUnlocked) {
+      for (const c of newlyActive) this._onComboUnlocked(c);
+    }
+
+    const nexusActive = this.hasCombo('elementalNexus');
     for (const slot of this.slots) {
       const def = WEAPONS[slot.id];
       const stats = def.getStats(slot.level, player);
       if (slot.evolved) applyEvolutionBuffs(slot.id, stats);
       if (stats.damage != null) stats.damage *= (this.synergy[def.damageType] || 1);
+      if (stats.damage != null && nexusActive) stats.damage *= 1.2;
 
       if (slot.id === 'orbitDrones') {
         this.updateOrbit(slot, stats, player, dt);
@@ -240,8 +312,35 @@ export class WeaponSystem {
       }
     }
 
+    if (nexusActive) {
+      this.nexusPulseTimer -= dt;
+      if (this.nexusPulseTimer <= 0) {
+        this.nexusPulseTimer = 6;
+        this.fireElementalPulse(player);
+      }
+    }
+
     this.updateBullets(dt);
     this.updateEffects(dt, player);
+  }
+
+  // Elemental Nexus combo: a periodic pulse hitting nearby enemies with all
+  // four elemental damage types at once, plus a matching four-color burst.
+  fireElementalPulse(player) {
+    const radius = 220;
+    const colors = { fire: '#ff8a5e', poison: '#7CFC9A', shock: '#c98cff', frost: '#5ee6ff' };
+    const types = Object.keys(colors);
+    this.enemyManager.queryNearby(player.x, player.y, radius, (e) => {
+      const a = angleTo(player.x, player.y, e.x, e.y);
+      for (const type of types) {
+        const dealt = this.enemyManager.damageEnemy(e, 6, a, 40, type);
+        this.particles.spark(e.x, e.y, a, colors[type], 2);
+      }
+    });
+    for (const type of types) {
+      this.effects.spawn({ kind: 'nova', x: player.x, y: player.y, life: 0.4, damage: 0, radius: 0, growTo: radius, color: colors[type] });
+    }
+    if (this.audio) this.audio.hit();
   }
 
   fire(slot, def, stats, player) {
@@ -274,6 +373,21 @@ export class WeaponSystem {
       });
     }
     if (this.audio) this.audio.shoot();
+
+    if (this.hasCombo('splinterBarrage')) {
+      slot._comboShotCount = (slot._comboShotCount || 0) + 1;
+      if (slot._comboShotCount >= 4) {
+        slot._comboShotCount = 0;
+        const ricoSlot = this.getSlot('ricochetBlade');
+        if (ricoSlot) {
+          const ricoDef = WEAPONS.ricochetBlade;
+          const ricoStats = ricoDef.getStats(ricoSlot.level, player);
+          if (ricoSlot.evolved) applyEvolutionBuffs('ricochetBlade', ricoStats);
+          if (ricoStats.damage != null) ricoStats.damage *= (this.synergy[ricoDef.damageType] || 1);
+          this.fireRicochetBlade(ricoSlot, ricoStats, player);
+        }
+      }
+    }
   }
 
   firePulseBlade(slot, stats, player) {
@@ -299,6 +413,17 @@ export class WeaponSystem {
       this.particles.damageText(e.x, e.y - 10, dealt);
     });
     if (this.audio) this.audio.explosion();
+
+    if (this.hasCombo('overloadDischarge')) {
+      const chainSlot = this.getSlot('chainLightning');
+      if (chainSlot) {
+        const chainDef = WEAPONS.chainLightning;
+        const chainStats = chainDef.getStats(chainSlot.level, player);
+        if (chainSlot.evolved) applyEvolutionBuffs('chainLightning', chainStats);
+        if (chainStats.damage != null) chainStats.damage *= (this.synergy[chainDef.damageType] || 1);
+        this.fireChainLightning(chainSlot, chainStats, player);
+      }
+    }
   }
 
   fireHomingMissile(slot, stats, player) {
@@ -382,6 +507,17 @@ export class WeaponSystem {
           const dealt = this.enemyManager.damageEnemy(target, stats.damage, a, 60, WEAPONS.minionSpectral.damageType);
           this.particles.damageText(target.x, target.y - 10, dealt);
           this.particles.spark(target.x, target.y, 0, slot.evolved ? '#ffd54a' : '#c98cff', 3);
+
+          if (this.hasCombo('bioSynergy') && rng() < 0.3) {
+            const missileSlot = this.getSlot('homingMissile');
+            if (missileSlot) {
+              const missileDef = WEAPONS.homingMissile;
+              const missileStats = missileDef.getStats(missileSlot.level, player);
+              if (missileSlot.evolved) applyEvolutionBuffs('homingMissile', missileStats);
+              if (missileStats.damage != null) missileStats.damage *= (this.synergy[missileDef.damageType] || 1);
+              this.fireHomingMissile(missileSlot, { ...missileStats, count: 1 }, player);
+            }
+          }
         } else {
           m.fireTimer = 0.2;
         }
@@ -511,6 +647,7 @@ export class WeaponSystem {
             const dealt = this.enemyManager.damageEnemy(en, e.damage, a, 150, e.damageType);
             this.particles.damageText(en.x, en.y - 10, dealt);
             this.particles.spark(en.x, en.y, a, '#ff8a5e', 3);
+            if (this.hasCombo('glacialSweep')) applyFrost(en, 0.2, 2.2);
           }
         });
       }

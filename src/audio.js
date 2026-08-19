@@ -12,7 +12,10 @@ class AudioEngine {
     this.musicTimer = null;
     this.musicVolume = 0.35; // settings-controlled base level, applied even before ensure()
     this.sfxVolume = 0.8;
+    this.musicIntensity = 0; // 0..1, set by game.js from wave/act danger + player HP%
   }
+
+  setMusicIntensity(x) { this.musicIntensity = clamp01(x); }
 
   ensure() {
     if (this.ctx) return;
@@ -98,7 +101,12 @@ class AudioEngine {
   // ---- Named SFX ----
   hit() { this.tone({ freq: 180, type: 'square', dur: 0.06, gain: 0.12, slideTo: 60 }); }
   shoot() { this.tone({ freq: 520, type: 'triangle', dur: 0.05, gain: 0.06, slideTo: 300 }); }
-  enemyDeath() { this.noiseBurst({ dur: 0.12, gain: 0.14, filterFreq: 900 }); this.tone({ freq: 260, type: 'sawtooth', dur: 0.1, gain: 0.08, slideTo: 90 }); }
+  // pitch ramps up with kill-streak momentum (streakMult 1 = base pitch).
+  enemyDeath(streakMult = 1) {
+    const p = clamp01((streakMult - 1) / 0.6) * 0.5 + 1; // up to +50% pitch at high streaks
+    this.noiseBurst({ dur: 0.12, gain: 0.14, filterFreq: 900 * p });
+    this.tone({ freq: 260 * p, type: 'sawtooth', dur: 0.1, gain: 0.08, slideTo: 90 * p });
+  }
   playerHurt() { this.tone({ freq: 140, type: 'sawtooth', dur: 0.18, gain: 0.22, slideTo: 60 }); this.noiseBurst({ dur: 0.15, gain: 0.15, filterFreq: 500 }); }
   pickup() { this.tone({ freq: 700, type: 'sine', dur: 0.05, gain: 0.05, slideTo: 1100 }); }
   levelUp() {
@@ -122,22 +130,26 @@ class AudioEngine {
     const scale = [130.81, 155.56, 174.61, 196.00, 233.08]; // C minor-ish pentatonic-ish, low register
     let step = 0;
     const playStep = () => {
+      const intensity = this.musicIntensity;
       const base = pickRandom(scale);
-      const octaveMul = Math.random() < 0.5 ? 1 : 2;
+      const octaveMul = Math.random() < (0.5 + intensity * 0.3) ? 1 : 2;
       const osc = this.ctx.createOscillator();
-      osc.type = 'sine';
+      osc.type = intensity > 0.6 ? 'sawtooth' : 'sine';
       osc.frequency.value = base * octaveMul;
       const g = this.ctx.createGain();
       const t0 = this.now();
+      const peakGain = 0.06 + intensity * 0.05;
+      const noteLen = 3.4 - intensity * 1.4; // faster, punchier notes as danger rises
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.06, t0 + 1.2);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.4);
+      g.gain.exponentialRampToValueAtTime(peakGain, t0 + 1.2 - intensity * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + noteLen);
       osc.connect(g);
       g.connect(this.musicGain);
       osc.start(t0);
-      osc.stop(t0 + 3.5);
+      osc.stop(t0 + noteLen + 0.1);
       step++;
-      this.musicTimer = setTimeout(playStep, 1400 + Math.random() * 900);
+      const interval = (1400 - intensity * 700) + Math.random() * (900 - intensity * 400);
+      this.musicTimer = setTimeout(playStep, interval);
     };
     playStep();
   }
@@ -149,5 +161,6 @@ class AudioEngine {
 }
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
 export const audio = new AudioEngine();

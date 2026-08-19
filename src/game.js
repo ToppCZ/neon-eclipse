@@ -66,10 +66,41 @@ export class Game {
     this.extractTarget = 0;
     this.extractCollected = 0;
 
+    // Kill-streak momentum: decays if the player stops scoring kills.
+    this.killStreak = 0;
+    this.killStreakTimer = 0;
+
+    // Full-screen flash overlay, used for level-up / evolution / combo beats.
+    this.flashColor = null;
+    this.flashAlpha = 0;
+    this.flashTimer = 0;
+    this.flashDuration = 0;
+
+    // Live menu background animation clock (real-time, since update() is
+    // gated off while state !== 'playing').
+    this.menuTime = 0;
+    this._menuLastNow = null;
+
     this.enemyManager.onDeath = (e) => this.onEnemyDeath(e);
     this.enemyManager.onPlayerHit = (amount, x, y) => this.onPlayerHit(amount, x, y);
+    this.weaponSystem._onComboUnlocked = (c) => this.onComboUnlocked(c);
 
     this.bindMenus();
+  }
+
+  flashScreen(color, alpha, duration) {
+    this.flashColor = color;
+    this.flashAlpha = alpha;
+    this.flashDuration = duration;
+    this.flashTimer = duration;
+  }
+
+  onComboUnlocked(combo) {
+    ui.flashBanner(`⚡ COMBO UNLOCKED: ${combo.name}! ⚡`);
+    this.flashScreen('#c98cff', 0.3, 0.3);
+    this.addHitStop(0.06);
+    this.addShake(5, 0.25);
+    if (audio.levelUp) audio.levelUp();
   }
 
   resize(w, h) { this.width = w; this.height = h; }
@@ -653,6 +684,16 @@ export class Game {
         actReached, nodesCleared: this.run.nodesCleared, goldEarned, seed: this.runSeed, samples: this.statSamples,
       };
     }
+
+    if (!victory) stats.nearMiss = this.computeNearMiss();
+
+    // A brand-new player's first run guarantees enough gold for their first
+    // meta-shop unlock, rather than leaving first-session pacing to luck.
+    if (this.meta.stats.totalRuns === 0) {
+      stats.firstRunBonus = 40;
+      stats.goldEarned += 40;
+    }
+
     recordRunResult(this.meta, stats);
     const unlocked = checkAchievements(this.meta, stats);
 
@@ -675,6 +716,22 @@ export class Game {
     ui.showEnd(victory, stats, unlocked);
   }
 
+  // "So close" framing for a death screen: surfaces how near the player was
+  // to their next weapon evolution and their ultimate, instead of just "you died."
+  computeNearMiss() {
+    const ultimatePct = Math.round(clamp(this.player.ultimateCharge, 0, 1) * 100);
+    let closest = null;
+    for (const slot of this.weaponSystem.slots) {
+      if (slot.evolved) continue;
+      const def = WEAPONS[slot.id];
+      const levelsLeft = def.maxLevel - slot.level;
+      const hasPassive = this.player.passives.get(def.evolutionRequires) > 0;
+      const score = levelsLeft + (hasPassive ? 0 : 1); // roughly "steps away"
+      if (!closest || score < closest.score) closest = { score, name: def.name, levelsLeft, hasPassive };
+    }
+    return { ultimatePct, evolution: closest };
+  }
+
   // Active ability, independent of the 6 passive-fire weapon slots (backlog
   // item #12: "weapon-swap/active-ability slot"). A big AoE burst, manually
   // triggered once fully charged (see Player.ULTIMATE_CHARGE_TIME).
@@ -695,6 +752,8 @@ export class Game {
   // ---------------- Event callbacks ----------------
   onEnemyDeath(e) {
     this.killCount += 1;
+    this.killStreak += 1;
+    this.killStreakTimer = 2.5; // resets to 0 if no kill lands within this window
     this.pickups.spawnXp(e.x, e.y, e.xp);
     const coreChance = e.isBoss ? 1 : (e.isElite ? 0.9 : 0.16 * clamp(this.player.luck, 0.5, 3));
     if (rng() < coreChance) {
@@ -703,7 +762,7 @@ export class Game {
     }
     const deathColor = statusGlowColor(e, this.settings.colorblindMode) || e.color;
     this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: deathColor, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
-    if (audio) audio.enemyDeath();
+    if (audio) audio.enemyDeath(1 + Math.min(0.3, Math.floor(this.killStreak / 10) * 0.03));
     if (e.isBoss || e.isElite) {
       // Expanding ring shockwave (reuses the purely-visual nova effect — damage:0
       // means it never applies damage on its own) plus a beat of hit-stop weight.
@@ -734,7 +793,8 @@ export class Game {
 
   onPickupCollect(g) {
     if (g.kind === 'xp') {
-      const levels = this.player.gainXp(g.value);
+      const streakMult = 1 + Math.min(0.3, Math.floor(this.killStreak / 10) * 0.03);
+      const levels = this.player.gainXp(g.value * streakMult);
       this.particles.spark(g.x, g.y, 0, '#5ee6ff', 3);
       if (levels) this.queueLevelUps(levels.length);
     } else if (g.kind === 'canister') {
@@ -757,6 +817,8 @@ export class Game {
     this.state = 'levelup';
     audio.levelUp();
     this.addShake(4, 0.2);
+    this.flashScreen('#ffd54a', 0.35, 0.25);
+    this.addHitStop(0.05);
     this.particles.burst(this.player.x, this.player.y, { count: 18, color: '#ffd54a', speed: 220, life: 0.5, glow: true });
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
     ui.showChoiceModal('Level Up!', choices, (choice) => {
@@ -802,10 +864,31 @@ export class Game {
       this.particles.spark(this.player.x, this.player.y, this.player.dashAngle + Math.PI, this.player.char.color, 2);
     }
     this.updateHazards(dt);
+
+    // Kill-streak momentum: decays if no kill lands within the window, and
+    // grants a small temporary damage bonus so momentum is worth protecting.
+    if (this.killStreakTimer > 0) {
+      this.killStreakTimer -= dt;
+      if (this.killStreakTimer <= 0) this.killStreak = 0;
+    }
+    const streakMult = 1 + Math.min(0.3, Math.floor(this.killStreak / 10) * 0.03);
+    this._streakDamageMult = streakMult;
+
     const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless' || this.nodeType === 'extract';
     this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, spawningEnabled);
+
+    const baseMight = this.player.might;
+    this.player.might = baseMight * streakMult;
     this.weaponSystem.update(dt, this.player);
-    this.weaponSystem.checkEvolutions(this.player);
+    this.player.might = baseMight;
+
+    const newlyEvolved = this.weaponSystem.checkEvolutions(this.player);
+    if (newlyEvolved.length) {
+      this.flashScreen('#ffd54a', 0.35, 0.3);
+      this.addHitStop(0.08);
+      this.addShake(6, 0.25);
+    }
+
     this.pickups.update(dt, this.player, (g) => this.onPickupCollect(g));
     this.particles.update(dt);
 
@@ -814,8 +897,14 @@ export class Game {
     this.camY += (this.player.y - this.camY) * camK;
 
     if (this.shakeTime > 0) this.shakeTime -= dt;
+    if (this.flashTimer > 0) this.flashTimer -= dt;
 
-    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel());
+    // Music intensity ramps with time-into-node and player HP danger.
+    const dangerFromTime = clamp(this.nodeElapsed / 60, 0, 1);
+    const dangerFromHp = 1 - clamp(this.player.hp / this.player.maxHp, 0, 1);
+    audio.setMusicIntensity(Math.max(dangerFromTime * 0.6, dangerFromHp));
+
+    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel(), this.killStreak);
 
     if (this.player.dead) return; // onPlayerHit already triggered endRun
 
@@ -853,6 +942,9 @@ export class Game {
       this.weaponSystem.render(ctx, camX, camY, this.player);
       this.drawPlayer(ctx, camX, camY);
       this.particles.render(ctx);
+    } else if (this.state === 'menu') {
+      this.updateMenuTime();
+      this.drawMenuScene(ctx);
     }
 
     ctx.restore();
@@ -862,6 +954,50 @@ export class Game {
       this.drawThreatIndicators(ctx);
       if (this.enemyManager.activeBoss) this.drawBossBar(ctx, this.enemyManager.activeBoss);
     }
+
+    if (this.flashTimer > 0) {
+      const alpha = this.flashAlpha * (this.flashTimer / this.flashDuration);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = this.flashColor;
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.restore();
+    }
+  }
+
+  // Real-clock delta since update() is gated off while state !== 'playing',
+  // so the menu background can't ride the game-logic dt.
+  updateMenuTime() {
+    const now = performance.now();
+    if (this._menuLastNow == null) this._menuLastNow = now;
+    const dt = Math.min(0.1, (now - this._menuLastNow) / 1000);
+    this._menuLastNow = now;
+    this.menuTime += dt;
+  }
+
+  // Slowly drifting glowing motes behind the main menu — cheap, deterministic
+  // Lissajous motion so the menu no longer reads as a static black screen.
+  drawMenuScene(ctx) {
+    const t = this.menuTime;
+    const colors = ['#5ee6ff', '#ff8a5e', '#c98cff', '#ffd54a', '#7CFC9A'];
+    const halfW = this.width / 2, halfH = this.height / 2;
+    ctx.save();
+    for (let i = 0; i < 10; i++) {
+      const seed = i * 12.9898;
+      const fx = 0.05 + (i % 3) * 0.02;
+      const fy = 0.04 + (i % 4) * 0.017;
+      const x = Math.sin(t * fx + seed) * halfW * 0.7;
+      const y = Math.cos(t * fy + seed * 1.7) * halfH * 0.6;
+      const r = 3 + ((i * 37) % 5);
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 0.6 + seed);
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.shadowColor = colors[i % colors.length];
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   // Arrow at the screen edge pointing toward an active elite/boss once it

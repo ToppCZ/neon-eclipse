@@ -1,4 +1,4 @@
-import { WEAPONS } from './weapons.js';
+import { WEAPONS, COMBOS } from './weapons.js';
 import { PASSIVES, TIER_COLORS } from './upgrades.js';
 import { META_UPGRADES, upgradeCost } from './meta.js';
 import { ACHIEVEMENTS } from './achievements.js';
@@ -80,7 +80,7 @@ class UI {
       'screen-node-shop', 'node-shop-cores', 'node-shop-list', 'btn-node-shop-reroll', 'node-shop-reroll-cost', 'btn-node-shop-continue',
       'screen-settings', 'settings-list', 'btn-back-settings',
       'screen-pause', 'btn-resume', 'btn-pause-settings', 'btn-quit',
-      'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu',
+      'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu', 'btn-download-card',
       'mute-btn',
     ].forEach((id) => { this.el[camel(id)] = document.getElementById(id); });
 
@@ -91,6 +91,7 @@ class UI {
     ].map(id => document.getElementById(id));
 
     this.bindWeaponTrayTooltip();
+    if (this.el.btnDownloadCard) this.el.btnDownloadCard.addEventListener('click', () => this.downloadRunCard());
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
@@ -124,10 +125,26 @@ class UI {
       const icon = iconFor(id);
       rows.push(`<div class="build-summary-row"><span style="color:${icon.color}">${icon.glyph}</span><b>${def.name}</b><span class="sub">Lv ${level}</span></div>`);
     }
-    this.el.buildSummaryPanel.innerHTML = `<h4>Current Build</h4>${rows.join('') || '<p class="sub">No weapons or passives yet.</p>'}`;
+    const comboRows = COMBOS.map((c) => {
+      const owned = c.weapons.map((w) => {
+        const slot = weaponSystem.getSlot(w.id);
+        return slot && slot.level >= w.minLevel;
+      });
+      const active = owned.every(Boolean);
+      const progress = c.weapons.map((w, i) => {
+        const slot = weaponSystem.getSlot(w.id);
+        const lvl = slot ? slot.level : 0;
+        return `${WEAPONS[w.id].name} Lv${lvl}/${w.minLevel}`;
+      }).join(' + ');
+      return `<div class="build-summary-row combo-row${active ? ' active' : ''}">
+        <span>${active ? '⚡' : '·'}</span><b>${c.name}</b><span class="sub">${active ? c.desc : progress}</span>
+      </div>`;
+    }).join('');
+
+    this.el.buildSummaryPanel.innerHTML = `<h4>Current Build</h4>${rows.join('') || '<p class="sub">No weapons or passives yet.</p>'}<h4>Combos</h4>${comboRows}`;
   }
 
-  updateHud(player, elapsed, weaponSystem, killCount, runLabel) {
+  updateHud(player, elapsed, weaponSystem, killCount, runLabel, killStreak = 0) {
     const hpPct = clamp(player.hp / player.maxHp, 0, 1);
     this.el.hpBar.style.transform = `scaleX(${hpPct})`;
     this.el.hpLabel.textContent = `${Math.ceil(player.hp)} / ${Math.round(player.maxHp)}`;
@@ -140,8 +157,9 @@ class UI {
     const ultPct = Math.round(clamp(player.ultimateCharge, 0, 1) * 100);
     this.el.ultBadge.textContent = ultPct >= 100 ? 'ULT READY (E)' : `ULT ${ultPct}%`;
     this.el.ultBadge.classList.toggle('ready', ultPct >= 100);
-    this.el.killCounter.textContent = `Kills: ${killCount}`;
+    this.el.killCounter.textContent = killStreak >= 3 ? `Kills: ${killCount}  🔥 Streak x${killStreak}` : `Kills: ${killCount}`;
     this.el.killCounter.classList.remove('hidden');
+    this.el.killCounter.classList.toggle('streak-hot', killStreak >= 10);
     if (runLabel) { this.el.runProgress.textContent = runLabel; this.el.runProgress.classList.remove('hidden'); }
 
     this.el.weaponTray.innerHTML = '';
@@ -195,7 +213,11 @@ class UI {
   }
 
   flashBossBanner(name) {
-    this.el.bossBanner.textContent = `⚠ ${name} APPROACHES ⚠`;
+    this.flashBanner(`⚠ ${name} APPROACHES ⚠`);
+  }
+
+  flashBanner(text) {
+    this.el.bossBanner.textContent = text;
     this.el.bossBanner.classList.remove('hidden');
     clearTimeout(this._bossTimer);
     this._bossTimer = setTimeout(() => this.el.bossBanner.classList.add('hidden'), 3500);
@@ -524,9 +546,77 @@ class UI {
     const extras = document.createElement('div');
     extras.className = 'end-extras';
     extras.innerHTML = this._statGraphHtml(stats.samples) +
+      (stats.nearMiss ? this._nearMissHtml(stats.nearMiss) : '') +
+      (stats.firstRunBonus ? `<div class="achievement-banner daily-banner">🎁 <b>First Run Bonus</b> — +${stats.firstRunBonus} gold</div>` : '') +
       (stats.daily ? this._dailyBannerHtml(stats) : '') +
       (unlockedAchievements.length ? this._achievementBannerHtml(unlockedAchievements) : '');
     if (extras.innerHTML.trim()) this.el.endStats.insertAdjacentElement('afterend', extras);
+
+    this._runCardStats = stats;
+  }
+
+  _nearMissHtml(nm) {
+    const parts = [];
+    if (nm.evolution) {
+      parts.push(nm.evolution.levelsLeft > 0
+        ? `${nm.evolution.name} needed ${nm.evolution.levelsLeft} more level${nm.evolution.levelsLeft > 1 ? 's' : ''} to evolve`
+        : `${nm.evolution.name} was one passive away from evolving`);
+    }
+    if (nm.ultimatePct < 100) parts.push(`Ultimate was ${nm.ultimatePct}% charged`);
+    if (!parts.length) return '';
+    return `<div class="achievement-banner near-miss-banner">😤 <b>So close!</b> ${parts.join(' · ')}</div>`;
+  }
+
+  // Renders a screenshot-worthy run summary onto an offscreen canvas and
+  // triggers a browser download — no server round-trip needed.
+  downloadRunCard() {
+    const stats = this._runCardStats;
+    if (!stats) return;
+    const w = 800, h = 450;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, '#05060f');
+    grad.addColorStop(1, '#12081f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = stats.victory ? '#7CFC9A' : '#ff5e8a';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(6, 6, w - 12, h - 12);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = stats.victory ? '#7CFC9A' : '#ff5e8a';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.fillText('NEON ECLIPSE', w / 2, 70);
+    ctx.fillStyle = '#fff';
+    ctx.font = '24px sans-serif';
+    ctx.fillText(stats.victory ? 'Run Complete' : (stats.mode === 'endless' ? 'Overwhelmed' : 'You Fell'), w / 2, 110);
+
+    const rows = stats.mode === 'endless'
+      ? [['Wave', stats.wave], ['Level', stats.level], ['Kills', stats.kills], ['Time', formatTime(stats.time)]]
+      : [['Act', stats.actReached], ['Level', stats.level], ['Kills', stats.kills], ['Time', formatTime(stats.time)]];
+    ctx.font = 'bold 30px sans-serif';
+    ctx.fillStyle = '#ffd54a';
+    const cellW = w / rows.length;
+    rows.forEach(([label, val], i) => {
+      const cx = cellW * i + cellW / 2;
+      ctx.fillText(String(val), cx, 220);
+      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#9fb0c9';
+      ctx.fillText(label, cx, 245);
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillStyle = '#ffd54a';
+    });
+
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#9fb0c9';
+    ctx.fillText(`Seed: ${stats.seed}`, w / 2, h - 30);
+
+    const link = document.createElement('a');
+    link.download = 'neon-eclipse-run.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   }
 
   _dailyBannerHtml(stats) {

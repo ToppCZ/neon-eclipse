@@ -54,7 +54,9 @@ export class EnemyManager {
       Object.assign(s, { x, y, vx, vy, damage, life: 4, color });
     });
 
-    this.spawnTimer = 0;
+    // A short guaranteed-quiet beat at the start of every node so the player
+    // can feel movement/dash before anything shoots at them (wordless onboarding).
+    this.spawnTimer = 1.5;
     this.activeBoss = null;
     this.activeElite = null;
     this.onDeath = null; // (enemy) => void
@@ -66,7 +68,9 @@ export class EnemyManager {
   reset() {
     this.pool.clear();
     this.shots.clear();
-    this.spawnTimer = 0;
+    // A short guaranteed-quiet beat at the start of every node so the player
+    // can feel movement/dash before anything shoots at them (wordless onboarding).
+    this.spawnTimer = 1.5;
     this.activeBoss = null;
     this.activeElite = null;
   }
@@ -79,11 +83,15 @@ export class EnemyManager {
     const actDmg = 1 + (actNumber - 1) * DC.actDmgPerAct;
     const actSpeed = 1 + (actNumber - 1) * DC.actSpeedPerAct;
     const actSpawn = 1 + (actNumber - 1) * DC.actSpawnPerAct;
+    // Opening burst: once the initial quiet beat ends, spawn rate ramps up
+    // hard for the first ~15s so the screen fills sooner ("time-to-chaos"),
+    // then settles back onto the normal time-based curve.
+    const openingBurst = nodeElapsed < 15 ? 1 + (1 - nodeElapsed / 15) * 0.9 : 1;
     return {
       hp: (1 + t * DC.timeHpRate) * actHp * this.diff.hp,
       dmg: (1 + t * DC.timeDmgRate) * actDmg * this.diff.dmg,
       speed: (1 + Math.min(DC.timeSpeedCap, t * DC.timeSpeedRate)) * actSpeed,
-      spawnRate: (1 + t * DC.timeSpawnRate) * actSpawn * this.diff.spawn,
+      spawnRate: (1 + t * DC.timeSpawnRate) * actSpawn * this.diff.spawn * openingBurst,
     };
   }
 
