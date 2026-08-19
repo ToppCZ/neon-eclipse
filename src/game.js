@@ -57,6 +57,7 @@ export class Game {
 
     this.camX = 0; this.camY = 0;
     this.shakeTime = 0; this.shakeMag = 0;
+    this.hitStopTimer = 0;
 
     this.pendingLevelUps = [];
     this.hazards = [];
@@ -78,6 +79,13 @@ export class Game {
     if (scale <= 0) return;
     this.shakeMag = Math.max(this.shakeMag, mag * scale);
     this.shakeTime = Math.max(this.shakeTime, time);
+  }
+
+  // Brief heavy-slowmo beat on a big hit, for impact weight (see update()).
+  // Skipped under reduced motion, same spirit as the particle-count halving.
+  addHitStop(duration) {
+    if (this.particles.reduced) return;
+    this.hitStopTimer = Math.max(this.hitStopTimer, duration);
   }
 
   openSettings() {
@@ -696,6 +704,12 @@ export class Game {
     const deathColor = statusGlowColor(e, this.settings.colorblindMode) || e.color;
     this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: deathColor, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
     if (audio) audio.enemyDeath();
+    if (e.isBoss || e.isElite) {
+      // Expanding ring shockwave (reuses the purely-visual nova effect — damage:0
+      // means it never applies damage on its own) plus a beat of hit-stop weight.
+      this.weaponSystem.effects.spawn({ kind: 'nova', x: e.x, y: e.y, life: 0.4, damage: 0, radius: 0, growTo: e.isBoss ? 220 : 120, color: deathColor });
+      this.addHitStop(e.isBoss ? 0.1 : 0.05);
+    }
     if (e.isBoss) this.addShake(16, 0.6);
 
     if (e.affix === 'explosive') {
@@ -713,6 +727,7 @@ export class Game {
       this.particles.burst(x, y, { count: 6, color: '#ff5e8a', speed: 100, life: 0.3 });
       audio.playerHurt();
       this.addShake(9, 0.25);
+      if (dealt > 20) this.addHitStop(0.05);
     }
     if (this.player.dead) this.endRun(false);
   }
@@ -759,6 +774,11 @@ export class Game {
   // ---------------- Main loop ----------------
   update(dt, input) {
     if (this.state !== 'playing') return;
+
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer -= dt;
+      dt *= 0.06; // heavy slowmo rather than a full freeze — keeps rendering/input smooth
+    }
 
     this.elapsed += dt;
     this.nodeElapsed += dt;
@@ -955,13 +975,49 @@ export class Game {
   drawPlayer(ctx, camX, camY) {
     const p = this.player;
     const sx = p.x - camX, sy = p.y - camY;
+
+    // Idle bob when stationary; suppressed while dashing so the dash reads clean.
+    const bob = (!p.moving && p.dashTimeLeft <= 0) ? Math.sin(this.elapsed * 3) * 2 : 0;
+
+    // Bank tilt: lean into the turn based on how fast facing angle is changing.
+    if (this._prevFacing == null) this._prevFacing = p.facing;
+    let dFacing = p.facing - this._prevFacing;
+    while (dFacing > Math.PI) dFacing -= TAU;
+    while (dFacing < -Math.PI) dFacing += TAU;
+    this._bankTilt = clamp((this._bankTilt || 0) * 0.85 + dFacing * 4, -0.35, 0.35);
+    this._prevFacing = p.facing;
+
+    // Continuous thruster particles while moving normally (dash already has its own trail).
+    if (p.moving && p.dashTimeLeft <= 0 && rng() < 0.5) {
+      const backAngle = p.facing + Math.PI;
+      this.particles.spark(p.x + Math.cos(backAngle) * 10, p.y + bob + Math.sin(backAngle) * 10, backAngle, p.char.color, 1);
+    }
+
+    const dashStretch = p.dashTimeLeft > 0 ? 1.35 : 1;
+
     ctx.save();
-    ctx.translate(sx, sy);
+    ctx.translate(sx, sy + bob);
 
     const flicker = p.invulnTimer > 0 && Math.floor(p.invulnTimer * 20) % 2 === 0;
     ctx.globalAlpha = flicker ? 0.4 : 1;
 
     ctx.rotate(p.facing);
+    ctx.scale(dashStretch, 1 / Math.sqrt(dashStretch));
+    ctx.rotate(this._bankTilt);
+
+    // Engine glow — intensifies while moving, flares while dashing.
+    const engineIntensity = p.dashTimeLeft > 0 ? 1 : (p.moving ? 0.6 : 0.25);
+    ctx.save();
+    ctx.globalAlpha *= engineIntensity;
+    ctx.fillStyle = p.char.accent || p.char.color;
+    ctx.shadowColor = p.char.color;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.ellipse(-10, 0, 6 + engineIntensity * 3, 3, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    // Hull
     ctx.shadowColor = p.char.color;
     ctx.shadowBlur = 18;
     ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : p.char.color;
@@ -973,6 +1029,13 @@ export class Game {
     ctx.closePath();
     ctx.fill();
 
+    // Cockpit accent
+    ctx.fillStyle = p.char.accent || '#ffffff';
+    ctx.globalAlpha *= 0.9;
+    ctx.beginPath();
+    ctx.arc(6, 0, 3, 0, TAU);
+    ctx.fill();
+
     ctx.restore();
 
     // Soft ground glow beneath player
@@ -982,7 +1045,7 @@ export class Game {
     ctx.shadowColor = p.char.color;
     ctx.shadowBlur = 24;
     ctx.beginPath();
-    ctx.ellipse(sx, sy + 4, 16, 7, 0, 0, TAU);
+    ctx.ellipse(sx, sy + 4 + bob, 16, 7, 0, 0, TAU);
     ctx.fill();
     ctx.restore();
 

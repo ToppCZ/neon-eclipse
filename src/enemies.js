@@ -10,7 +10,7 @@ function makeEnemy() {
     knockX: 0, knockY: 0, _statusSpeedMult: 1,
     burnTime: 0, burnDps: 0, poisonTime: 0, poisonStacks: 0, poisonDpsPerStack: 0,
     stunTime: 0, frostTime: 0, frostStacks: 0, frostSlowPerStack: 0,
-    affix: null, shieldHp: 0, shieldMaxHp: 0,
+    affix: null, shieldHp: 0, shieldMaxHp: 0, _chargePulse: 0,
   };
 }
 
@@ -240,6 +240,8 @@ export class EnemyManager {
       this.moveToward(e, dt, player.x, player.y, -0.6);
     }
     e.fireTimer = (e.fireTimer ?? randRange(0, 1)) - dt;
+    // Telegraph: a visible charge-up pulse in the last 0.35s before firing (see render()).
+    e._chargePulse = e.fireTimer < 0.35 ? 1 - clamp(e.fireTimer / 0.35, 0, 1) : 0;
     if (e.fireTimer <= 0) {
       e.fireTimer = e.type.fireRate || 1.6;
       const a = angleTo(e.x, e.y, player.x, player.y);
@@ -370,12 +372,19 @@ export class EnemyManager {
       const statusGlow = statusGlowColor(e, this.colorblind);
       ctx.save();
       ctx.translate(sx, sy);
+
+      // Spawn-in: bosses/elites ease up to full size instead of popping in at
+      // full scale, using e.t (already tracked as time-since-spawn) directly.
+      if (e.isBoss || e.isElite) {
+        const introT = e.isBoss ? e.t / 0.4 : e.t / 0.3;
+        if (introT < 1) ctx.scale(easeOutCubic(introT), easeOutCubic(introT));
+      }
+
       ctx.shadowColor = statusGlow || e.glow;
       ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : e.color;
       ctx.beginPath();
-      const spikes = e.isBoss ? 10 : (e.isElite ? 7 : 5);
-      drawSpikyBlob(ctx, e.radius, spikes, e.t);
+      drawEnemyBody(ctx, e);
       ctx.fill();
       if (statusGlow) {
         ctx.strokeStyle = statusGlow;
@@ -454,6 +463,87 @@ function drawSpikyBlob(ctx, radius, spikes, t) {
     const a = (i / (spikes * 2)) * TAU;
     const wobble = 0.85 + 0.15 * Math.sin(a * 3 + t * 4);
     const r = radius * wobble;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function easeOutCubic(t) {
+  const c = clamp(t, 0, 1);
+  return 1 - Math.pow(1 - c, 3);
+}
+
+// Distinct silhouettes per enemy archetype instead of one shared blob shape —
+// a fast enemy reads as fast, a tank reads as armored, a caster telegraphs
+// its shot. Falls back to the original spiky blob for anything unlisted.
+function drawEnemyBody(ctx, e) {
+  const id = e.isBoss ? e.bossId : (e.type && e.type.id);
+  switch (id) {
+    case 'sprinter': return drawDartShape(ctx, e.radius);
+    case 'swarmling': return drawHexShape(ctx, e.radius, e.t);
+    case 'spitter': return drawCrystalShape(ctx, e.radius, e._chargePulse || 0);
+    case 'brute': return drawArmoredShape(ctx, e.radius);
+    case 'swarmMother': return drawPulseRingShape(ctx, e.radius, e.t, e.pulsing > 0);
+    case 'eclipse': return drawSpikyBlob(ctx, e.radius * (e.dashing > 0 ? 1.25 : 1), 10, e.t);
+    default: return drawSpikyBlob(ctx, e.radius, e.isBoss ? 10 : (e.isElite ? 7 : 5), e.t);
+  }
+}
+
+// Elongated forward-pointing dart — reads as fast even standing still.
+function drawDartShape(ctx, radius) {
+  ctx.beginPath();
+  ctx.moveTo(radius * 1.5, 0);
+  ctx.lineTo(-radius * 0.7, radius * 0.75);
+  ctx.lineTo(-radius * 0.25, 0);
+  ctx.lineTo(-radius * 0.7, -radius * 0.75);
+  ctx.closePath();
+}
+
+// Small pulsing hexagon — deliberately simple/quiet since these spawn in groups.
+function drawHexShape(ctx, radius, t) {
+  const pulse = 0.92 + 0.08 * Math.sin(t * 5);
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU;
+    const r = radius * pulse;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+// Crystal shape that swells right before it fires — a real visual telegraph,
+// not just a color change, driven by e._chargePulse (see behaviorRanged).
+function drawCrystalShape(ctx, radius, chargePulse) {
+  const r = radius * (1 + chargePulse * 0.4);
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 1.3);
+  ctx.lineTo(r, 0);
+  ctx.lineTo(0, r * 1.3);
+  ctx.lineTo(-r, 0);
+  ctx.closePath();
+}
+
+// Notched octagon — reads as armored/tanky.
+function drawArmoredShape(ctx, radius) {
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU;
+    const r = radius * (i % 2 === 0 ? 1 : 0.8);
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+// Rippling many-pointed ring for the Swarm Mother boss — flares when pulsing.
+function drawPulseRingShape(ctx, radius, t, pulsing) {
+  const pulse = pulsing ? 1.2 : 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) {
+    const a = (i / 12) * TAU;
+    const r = radius * pulse * (0.85 + 0.15 * Math.sin(a * 4 + t * 3));
     const x = Math.cos(a) * r, y = Math.sin(a) * r;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
