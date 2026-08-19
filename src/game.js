@@ -1,4 +1,4 @@
-import { clamp, randRange, TAU, rng, seedRng, hashSeed, WORLD_HALF, angleTo } from './utils.js';
+import { clamp, randRange, TAU, rng, seedRng, hashSeed, WORLD_HALF, angleTo, shadeFill } from './utils.js';
 import { Player, getCharacter, listCharacters, getRelic, listRelics } from './player.js';
 import { EnemyManager, FROST_AURA_RADIUS } from './enemies.js';
 import { WeaponSystem, WEAPONS } from './weapons.js';
@@ -1186,9 +1186,21 @@ export class Game {
     // Hull — a distinct silhouette per character, not just a recolored triangle.
     ctx.shadowColor = p.char.color;
     ctx.shadowBlur = 18;
-    ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : p.char.color;
+    ctx.fillStyle = p.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, 18, p.char.color);
     drawShipHull(ctx, shipShape);
     ctx.fill();
+
+    // Panel line: a single highlight stroke down the spine reads as a hull
+    // seam rather than a flat cutout — cheap but sells "built", not drawn.
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = p.char.accent || '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(COCKPIT_X[shipShape] + 4, 0);
+    ctx.lineTo(-8, 0);
+    ctx.stroke();
+    ctx.restore();
 
     // Cockpit accent
     ctx.fillStyle = p.char.accent || '#ffffff';

@@ -75,6 +75,34 @@ export function weightedPick(items) {
   return items[items.length - 1].value;
 }
 
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const num = parseInt(v, 16);
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+}
+
+function mixColor(hex, target, amt) {
+  const [r, g, b] = hexToRgb(hex);
+  const mr = Math.round(r + (target[0] - r) * amt);
+  const mg = Math.round(g + (target[1] - g) * amt);
+  const mb = Math.round(b + (target[2] - b) * amt);
+  return `rgb(${mr},${mg},${mb})`;
+}
+
+// A cheap "beveled" look for a flat-colored shape: a radial gradient offset
+// toward the upper-left (a fixed implied light source) so every ship/enemy
+// body reads as a lit, faceted solid instead of a flat silhouette — without
+// touching any of the individual model-drawing functions. Call with ctx
+// already translated to the shape's local origin.
+export function shadeFill(ctx, radius, color) {
+  const g = ctx.createRadialGradient(-radius * 0.35, -radius * 0.35, radius * 0.1, 0, 0, radius * 1.35);
+  g.addColorStop(0, mixColor(color, [255, 255, 255], 0.45));
+  g.addColorStop(0.55, color);
+  g.addColorStop(1, mixColor(color, [0, 0, 0], 0.4));
+  return g;
+}
+
 export function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

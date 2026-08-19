@@ -1,4 +1,4 @@
-import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, rng, TAU } from './utils.js';
+import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, rng, shadeFill, TAU } from './utils.js';
 import { ENEMY_TYPES, BOSS_TYPES, DIFFICULTY_CURVE as DC } from './enemyData.js';
 import { applyBurn, applyPoison, applyShock, applyFrost, updateStatuses, clearStatuses, statusGlowColor } from './statusEffects.js';
 
@@ -531,7 +531,7 @@ export class EnemyManager {
 
       ctx.shadowColor = statusGlow || e.glow;
       ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
-      ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : e.color;
+      ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, e.radius, e.color);
       drawEnemyBody(ctx, e);
       if (statusGlow) {
         ctx.strokeStyle = statusGlow;
