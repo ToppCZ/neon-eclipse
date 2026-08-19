@@ -8,11 +8,13 @@ import { BIOMES, biomeForAct } from './enemyData.js';
 const STEPS_PER_ACT = 4; // + 1 forced boss step
 
 const NODE_TYPE_WEIGHTS = [
-  { weight: 45, value: 'combat' },
-  { weight: 15, value: 'elite' },
-  { weight: 15, value: 'shop' },
-  { weight: 15, value: 'treasure' },
-  { weight: 10, value: 'rest' },
+  { weight: 40, value: 'combat' },
+  { weight: 13, value: 'elite' },
+  { weight: 13, value: 'shop' },
+  { weight: 13, value: 'treasure' },
+  { weight: 9, value: 'rest' },
+  { weight: 7, value: 'boon' },
+  { weight: 5, value: 'extract' },
 ];
 
 const NODE_LABELS = {
@@ -21,6 +23,8 @@ const NODE_LABELS = {
   shop: ['Black Market', 'Supply Cache', "Vendor's Stall"],
   treasure: ['Vault', 'Cache', 'Stash'],
   rest: ['Safehouse', 'Sanctuary', 'Respite'],
+  boon: ['Cursed Altar', 'Dark Bargain', 'Forbidden Pact'],
+  extract: ['Extraction Site', 'Resource Drop', 'Salvage Run'],
   boss: ['Act Boss'],
 };
 

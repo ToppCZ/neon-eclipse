@@ -11,7 +11,7 @@ window.__game = game; // debug hook for automated/manual testing in the console
 // per-frame gamepad poll can OR its own reading in without clobbering keys
 // that are still physically held down.
 const kb = { left: false, right: false, up: false, down: false };
-const input = { left: false, right: false, up: false, down: false, dashPressed: false, mouseX: 0, mouseY: 0 };
+const input = { left: false, right: false, up: false, down: false, dashPressed: false, ultimatePressed: false, mouseX: 0, mouseY: 0 };
 
 // Arrow keys, Shift, and P are always-on fallbacks; game.settings.keybinds
 // (rebindable in Settings) adds a second, user-chosen primary key on top —
@@ -31,6 +31,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === game.settings.keybinds.dash) {
     input.dashPressed = true;
+    e.preventDefault();
+  }
+  if (e.code === 'KeyE' || e.code === game.settings.keybinds.ultimate) {
+    input.ultimatePressed = true;
     e.preventDefault();
   }
 });
@@ -79,7 +83,7 @@ canvas.addEventListener('touchcancel', clearTouch);
 // dash, button 9 (Start) for pause. Polled once per frame rather than
 // event-driven, since that's how the API works — there's no "gamepadmove".
 const GAMEPAD_DEADZONE = 0.25;
-let gpDashHeld = false, gpPauseHeld = false;
+let gpDashHeld = false, gpPauseHeld = false, gpUltHeld = false;
 function pollGamepad() {
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
@@ -107,6 +111,11 @@ function pollGamepad() {
   const pauseDown = !!(pauseBtn && pauseBtn.pressed);
   if (pauseDown && !gpPauseHeld && (game.state === 'playing' || game.state === 'paused')) game.togglePause();
   gpPauseHeld = pauseDown;
+
+  const ultBtn = gp.buttons[1]; // B/Circle
+  const ultDown = !!(ultBtn && ultBtn.pressed);
+  if (ultDown && !gpUltHeld) input.ultimatePressed = true;
+  gpUltHeld = ultDown;
 }
 
 function resize() {
@@ -137,6 +146,7 @@ function loop(now) {
   pollGamepad();
   game.update(dt, input);
   input.dashPressed = false; // edge-triggered: consumed once per keypress, not held
+  input.ultimatePressed = false;
   game.render();
   requestAnimationFrame(loop);
 }

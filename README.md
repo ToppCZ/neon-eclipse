@@ -6,6 +6,8 @@ Pick a character and a build-defining relic, then navigate a branching map acros
 
 Prefer no ending? **Endless Mode** drops the act structure for infinite escalating waves: survive a wave, spend Cores at a between-wave shop on permanent-for-the-run upgrades, then push into the next (harder) wave — elites every 5 waves, a scaled-up boss every 10 — for as long as you can last. Best wave reached is tracked alongside the story mode's best act/level on the main menu.
 
+Also on the main menu: **Daily Challenge** (a fixed character/relic/seed on Hard, the same for everyone each day), a **Leaderboard** of your top 10 runs, and **Settings** (volume, screen shake, colorblind palette, manual aim, rebindable keys, gamepad, difficulty, save slots, export/import).
+
 ## Play it — Windows desktop app
 
 Grab the latest build from the [Releases page](https://github.com/ToppCZ/neon-eclipse/releases), unzip it, and run `NeonEclipse.exe`. No browser, no server, no install — it's a real window (WPF + Microsoft Edge WebView2, requires the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — already present on most Windows 10/11 machines).
@@ -34,22 +36,26 @@ Then open `http://localhost:8080`.
 
 ## Controls
 
-- **Move:** WASD or Arrow Keys
-- **Dash:** Space or Shift (brief invincibility, on a cooldown)
-- Weapons fire automatically — no attack button
-- **Esc** or **P:** pause
+- **Move:** WASD or Arrow Keys (or a connected gamepad's left stick/d-pad)
+- **Dash:** Space or Shift (brief invincibility, on a cooldown/charge system) — gamepad A/Cross
+- **Ultimate:** E, once charged (20s) — a big AoE burst — gamepad B/Circle
+- Weapons fire automatically — no attack button (except Shard Cannon with Manual Aim on, which follows the mouse)
+- **Esc** or **P:** pause — gamepad Start
 - Touch: drag anywhere on screen (virtual joystick)
+- Move/Dash/Ultimate/Pause keys are rebindable in Settings; arrows, Shift, E, and P always work as fallbacks
 
 ## What's here
 
-- **Run structure:** 3 acts, each a short branching sequence of node choices (combat / elite / shop / treasure / rest) ending in an act boss — pick your path each step, Slay-the-Spire style
-- **Pre-run planning:** 3 characters x 4 build-defining relics (each a real tradeoff, not just a buff)
+- **Run structure:** 3 acts, each a short branching sequence of node choices (combat / elite / shop / treasure / rest / boon / extract) ending in an act boss — pick your path each step, Slay-the-Spire style
+  - **Boon nodes** offer a real buff+drawback tradeoff, including two mutually-exclusive paths (Berserker's Pact vs. Warden's Pact) that lock each other out for the run once either is picked
+  - **Extract nodes** add an objective on top of survival: collect scattered canisters before time runs out for a bonus reward
+- **Pre-run planning:** 3 characters x 4 build-defining relics (each a real tradeoff, not just a buff), plus an optional custom or random seed
 - **Elemental depth:** 5 damage types (physical/fire/poison/shock/frost) with per-enemy resistances/weaknesses, status effects (burn, poison stacks, shock stun, frost slow), and two build-archetype synergy bonuses (physical focus vs. elemental diversity)
-- **Items:** 6 weapons (each evolving once maxed + paired with the right passive), 7 passives with mastery bonuses at max level, common/rare/legendary tiers
-- **Elites & bosses:** elites roll a random affix (explosive death, damage shield, frost aura), 3 distinct bosses (one per act)
+- **Items:** 8 weapons (each evolving once maxed + paired with the right passive) — including a wall/enemy-bouncing Ricochet Blade and a persistent Spectral Minion companion — 10 passives with mastery bonuses at max level, common/rare/legendary tiers, plus an always-available active Ultimate ability separate from the weapon slots
+- **Elites & bosses:** elites roll a random affix (explosive death, damage shield, frost aura, HP regen), 3 distinct bosses (one per act)
 - **Biome hazards:** static terrain danger zones (poison pools, fire vents) to route around mid-fight
-- Meta-progression shop (persists via `localStorage`) between runs
-- Screen shake, particles, hit-flash, floating damage numbers, procedural WebAudio SFX + ambient music
+- Meta-progression shop, save slots, achievements, run history, and a local leaderboard (all persist via `localStorage`)
+- Minimap, off-screen threat indicators, boss health bar, low-HP vignette, post-run HP graph, in-run build summary panel, colorblind-safe status-effect palette, screen shake, particles, hit-flash, floating damage numbers, procedural WebAudio SFX + ambient music
 
 ## Project structure
 
@@ -57,21 +63,26 @@ Then open `http://localhost:8080`.
 index.html       shell + all DOM screens (menu, HUD, shop, level-up, end)
 style.css        theming
 src/
-  main.js        bootstrap, input, resize, render loop
-  game.js         state machine + orchestration (map/combat/shop/reward nodes)
+  main.js        bootstrap, input (keyboard/touch/gamepad/mouse), resize, render loop
+  game.js         state machine + orchestration (map/combat/shop/reward nodes, ultimate)
   runMap.js        branching run/act/node generation
-  player.js       character + relic defs, Player class, dash
+  player.js       character + relic defs, Player class, dash charges, ultimate charge
+  boons.js         boon node defs + mutually-exclusive path locking
+  achievements.js   milestone defs, checked at end of each run
+  settings.js       settings + save-slot + difficulty-multiplier persistence
   enemies.js       enemy AI, spawner, boss patterns, elite affixes
-  enemyData.js      enemy/boss stat tables, biomes, resistances
-  statusEffects.js  burn/poison/shock/frost status effect logic
+  enemyData.js      enemy/boss stat tables, biomes, resistances, difficulty curve config
+  statusEffects.js  burn/poison/shock/frost status effect logic (+ colorblind palette)
   weapons.js       weapon defs, damage types, projectile/effect systems, synergies
   upgrades.js      passives, item tiers, level-up/shop choice rolling
-  pickups.js       XP gems / Cores, magnet pickup
+  pickups.js       XP gems / Cores / extract canisters, magnet pickup
   particles.js      particle + floating text system
   audio.js         procedural WebAudio SFX/music
-  meta.js          localStorage meta-progression + shop
+  meta.js          localStorage meta-progression, slots, history, leaderboard, pick stats
   ui.js            DOM screen/HUD management
-  utils.js         math, object pooling, spatial grid
+  utils.js         math, object pooling, spatial grid, seedable RNG
+tests/
+  smoke.mjs        Playwright end-to-end regression check (see Testing below)
 bundle.py        concatenates src/*.js into one script (no ES modules) for the desktop build
 desktop/         WPF + WebView2 wrapper -> NeonEclipse.exe (desktop/game/ is bundle.py's output)
 ```

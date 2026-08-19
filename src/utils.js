@@ -1,6 +1,7 @@
 // ---- Math & general helpers ----------------------------------------------
 
 export const TAU = Math.PI * 2;
+export const WORLD_HALF = 2200; // shared arena half-extent, used by Game, EnemyManager, and WeaponSystem (ricochet bounces)
 
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;

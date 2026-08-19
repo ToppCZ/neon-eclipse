@@ -1,4 +1,4 @@
-import { Pool, clamp, dist, dist2, angleTo, randRange, TAU } from './utils.js';
+import { Pool, clamp, dist, dist2, angleTo, randRange, TAU, WORLD_HALF } from './utils.js';
 
 // ---- Weapon definitions -----------------------------------------------
 // getStats(level, player) returns the numbers a fire/update call needs.
@@ -86,10 +86,36 @@ export const WEAPONS = {
       };
     },
   },
+  ricochetBlade: {
+    id: 'ricochetBlade', name: 'Ricochet Blade', maxLevel: 8, damageType: 'physical',
+    desc: 'A blade that bounces off walls and enemies, losing a little bite each hit.',
+    evolvedName: 'Chaos Blade', evolutionRequires: 'boots',
+    getStats(level, player) {
+      return {
+        damage: (13 + level * 3.6) * player.might,
+        cooldown: clamp(1.1 - level * 0.05, 0.45, 1.1) * player.cooldownMult,
+        bounces: 4 + Math.floor(level / 2),
+        speed: 480 * player.projSpeedMult,
+      };
+    },
+  },
+  minionSpectral: {
+    id: 'minionSpectral', name: 'Spectral Minion', maxLevel: 8, damageType: 'shock',
+    desc: 'Summons a spirit that fights alongside you, striking the nearest foe.',
+    evolvedName: 'Spectral Legion', evolutionRequires: 'thorns',
+    getStats(level, player) {
+      return {
+        damage: (9 + level * 2.6) * player.might,
+        cooldown: clamp(1.3 - level * 0.06, 0.5, 1.3) * player.cooldownMult,
+        count: 1 + (level >= 5 ? 1 : 0),
+        range: 260 * player.area,
+      };
+    },
+  },
 };
 
 function makeBullet() {
-  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, damageType: 'physical', pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0 };
+  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, damageType: 'physical', pierceLeft: 0, radius: 6, life: 3, color: '#5ee6ff', kind: 'bullet', hitSet: null, evolvedSplit: false, __alive: true, splash: 0, targetRef: null, turnRate: 0, speed: 0, bouncesLeft: 0 };
 }
 
 function makeEffect() {
@@ -109,7 +135,7 @@ export class WeaponSystem {
         pierceLeft: opts.pierce ?? 0, radius: opts.radius ?? 6, life: opts.life ?? 3,
         color: opts.color ?? '#5ee6ff', kind: opts.kind ?? 'bullet', evolvedSplit: !!opts.evolvedSplit,
         splash: opts.splash ?? 0, targetRef: opts.targetRef ?? null, turnRate: opts.turnRate ?? 0,
-        speed: opts.speed ?? 300,
+        speed: opts.speed ?? 300, bouncesLeft: opts.bounces ?? 0,
       });
       b.hitSet = b.hitSet || new Set();
       b.hitSet.clear();
@@ -202,6 +228,10 @@ export class WeaponSystem {
         this.updateOrbit(slot, stats, player, dt);
         continue;
       }
+      if (slot.id === 'minionSpectral') {
+        this.updateMinions(slot, stats, player, dt);
+        continue;
+      }
 
       slot.cooldownTimer -= dt;
       if (slot.cooldownTimer <= 0) {
@@ -221,6 +251,7 @@ export class WeaponSystem {
       case 'novaBurst': return this.fireNovaBurst(slot, stats, player);
       case 'homingMissile': return this.fireHomingMissile(slot, stats, player);
       case 'chainLightning': return this.fireChainLightning(slot, stats, player);
+      case 'ricochetBlade': return this.fireRicochetBlade(slot, stats, player);
     }
   }
 
@@ -314,6 +345,51 @@ export class WeaponSystem {
     }
   }
 
+  fireRicochetBlade(slot, stats, player) {
+    const target = this.enemyManager.nearest(player.x, player.y, 900);
+    const a = target ? angleTo(player.x, player.y, target.x, target.y) : player.facing;
+    this.bullets.spawn({
+      x: player.x, y: player.y, vx: Math.cos(a) * stats.speed, vy: Math.sin(a) * stats.speed,
+      damage: stats.damage, damageType: WEAPONS.ricochetBlade.damageType, pierce: 0, radius: 7, life: 5,
+      color: slot.evolved ? '#ffd54a' : '#5ee6ff', kind: 'ricochet', bounces: stats.bounces,
+    });
+    if (this.audio) this.audio.shoot();
+  }
+
+  // Friendly companions tracked on the slot itself (like orbitDrones' angle
+  // state) rather than as pooled projectiles — they're persistent, not
+  // fire-and-forget.
+  updateMinions(slot, stats, player, dt) {
+    if (!slot.minions) slot.minions = [];
+    while (slot.minions.length < stats.count) {
+      slot.minions.push({ x: player.x, y: player.y, fireTimer: randRange(0, stats.cooldown) });
+    }
+    slot.minions.length = stats.count;
+
+    for (let i = 0; i < slot.minions.length; i++) {
+      const m = slot.minions[i];
+      const angle = (i / stats.count) * TAU + player.facing;
+      const tx = player.x + Math.cos(angle) * 50, ty = player.y + Math.sin(angle) * 50;
+      m.x += (tx - m.x) * Math.min(1, dt * 5);
+      m.y += (ty - m.y) * Math.min(1, dt * 5);
+
+      m.fireTimer -= dt;
+      if (m.fireTimer <= 0) {
+        const target = this.enemyManager.nearest(m.x, m.y, stats.range);
+        if (target) {
+          m.fireTimer = stats.cooldown;
+          const a = angleTo(m.x, m.y, target.x, target.y);
+          const dealt = this.enemyManager.damageEnemy(target, stats.damage, a, 60, WEAPONS.minionSpectral.damageType);
+          this.particles.damageText(target.x, target.y - 10, dealt);
+          this.particles.spark(target.x, target.y, 0, slot.evolved ? '#ffd54a' : '#c98cff', 3);
+        } else {
+          m.fireTimer = 0.2;
+        }
+      }
+    }
+    slot._renderMinions = slot.minions;
+  }
+
   updateOrbit(slot, stats, player, dt) {
     slot.orbitAngle += stats.rotSpeed * dt;
     const count = stats.count;
@@ -357,6 +433,18 @@ export class WeaponSystem {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
 
+      if (b.kind === 'ricochet') {
+        let bounced = false;
+        if (b.x <= -WORLD_HALF || b.x >= WORLD_HALF) { b.vx = -b.vx; b.x = clamp(b.x, -WORLD_HALF, WORLD_HALF); bounced = true; }
+        if (b.y <= -WORLD_HALF || b.y >= WORLD_HALF) { b.vy = -b.vy; b.y = clamp(b.y, -WORLD_HALF, WORLD_HALF); bounced = true; }
+        if (bounced) {
+          b.bouncesLeft -= 1;
+          b.hitSet.clear(); // a wall bounce resets which enemies it can re-hit
+          this.particles.spark(b.x, b.y, Math.atan2(b.vy, b.vx), b.color, 3);
+          if (b.bouncesLeft < 0) return false;
+        }
+      }
+
       let hitOne = null;
       this.enemyManager.queryNearby(b.x, b.y, b.radius + 24, (e) => {
         if (hitOne) return;
@@ -379,6 +467,15 @@ export class WeaponSystem {
           this.particles.burst(b.x, b.y, { count: 14, color: '#ffb14a', speed: 180, life: 0.4, glow: true });
           if (this.audio) this.audio.explosion();
           return false;
+        }
+
+        if (b.kind === 'ricochet') {
+          const bounceAngle = angleTo(hitOne.x, hitOne.y, b.x, b.y);
+          b.vx = Math.cos(bounceAngle) * b.speed;
+          b.vy = Math.sin(bounceAngle) * b.speed;
+          b.damage *= 0.9;
+          b.bouncesLeft -= 1;
+          return b.bouncesLeft >= 0;
         }
 
         if (b.evolvedSplit) {
@@ -438,6 +535,23 @@ export class WeaponSystem {
         ctx.fillStyle = slot.evolved ? '#ffd54a' : '#5ee6ff';
         ctx.beginPath();
         ctx.arc(ox, oy, 9, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Spectral minions
+    for (const slot of this.slots) {
+      if (slot.id !== 'minionSpectral' || !slot._renderMinions) continue;
+      for (const m of slot._renderMinions) {
+        const sx = m.x - camX, sy = m.y - camY;
+        ctx.save();
+        ctx.shadowColor = slot.evolved ? '#ffd54a' : '#c98cff';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = slot.evolved ? '#ffd54a' : '#c98cff';
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 8, 0, TAU);
         ctx.fill();
         ctx.restore();
       }
@@ -533,5 +647,7 @@ function applyEvolutionBuffs(id, stats) {
     case 'novaBurst': stats.radius *= 1.35; stats.cooldown *= 0.75; break;
     case 'homingMissile': stats.count += 2; stats.splash *= 1.4; break;
     case 'chainLightning': stats.bounces += 3; break;
+    case 'ricochetBlade': stats.bounces += 4; stats.damage *= 1.25; break;
+    case 'minionSpectral': stats.count += 1; stats.damage *= 1.3; break;
   }
 }

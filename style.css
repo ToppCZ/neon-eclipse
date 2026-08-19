@@ -132,6 +132,18 @@ body.low-hp #vignette {
   letter-spacing: 0.5px;
 }
 
+#ult-badge {
+  max-width: 640px;
+  margin: 2px auto 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--purple);
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+#ult-badge.ready { color: var(--gold); animation: ultPulse 1.2s ease-in-out infinite; }
+@keyframes ultPulse { 0%, 100% { text-shadow: 0 0 6px var(--gold); } 50% { text-shadow: 0 0 14px var(--gold); } }
+
 #run-progress {
   max-width: 640px;
   margin: 2px auto 0;

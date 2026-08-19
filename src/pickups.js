@@ -10,8 +10,8 @@ export class PickupManager {
     this.audio = audio;
     this.pool = new Pool(makeGem, (g, x, y, value, kind) => {
       g.x = x; g.y = y; g.value = value; g.kind = kind;
-      g.color = kind === 'cores' ? '#ffd54a' : (value >= 5 ? '#c98cff' : '#5ee6ff');
-      g.radius = kind === 'cores' ? 6 : (value >= 5 ? 7 : 5);
+      g.color = kind === 'cores' ? '#ffd54a' : kind === 'canister' ? '#7CFC9A' : (value >= 5 ? '#c98cff' : '#5ee6ff');
+      g.radius = kind === 'cores' ? 6 : kind === 'canister' ? 9 : (value >= 5 ? 7 : 5);
       g.vx = 0; g.vy = 0; g.attracted = false; g.bob = Math.random() * TAU;
     });
   }
@@ -20,6 +20,7 @@ export class PickupManager {
 
   spawnXp(x, y, value) { this.pool.spawn(x, y, value, 'xp'); }
   spawnCores(x, y, value) { this.pool.spawn(x, y, value, 'cores'); }
+  spawnCanister(x, y) { this.pool.spawn(x, y, 1, 'canister'); }
 
   update(dt, player, onCollect) {
     const magnetR2 = player.magnet * player.magnet;
@@ -70,6 +71,19 @@ export class PickupManager {
         ctx.beginPath();
         ctx.arc(0, 0, g.radius, 0, TAU);
         ctx.fill();
+      } else if (g.kind === 'canister') {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * TAU;
+          const px = Math.cos(a) * g.radius, py = Math.sin(a) * g.radius;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.6;
+        ctx.stroke();
       } else {
         ctx.rotate(Math.PI / 4);
         ctx.fillRect(-g.radius, -g.radius, g.radius * 2, g.radius * 2);

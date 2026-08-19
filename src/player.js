@@ -58,6 +58,7 @@ export function listRelics() { return Object.values(RELICS); }
 const DASH_COOLDOWN = 2.2;
 const DASH_DURATION = 0.18;
 const DASH_SPEED_MULT = 3.4;
+export const ULTIMATE_CHARGE_TIME = 20;
 
 export class Player {
   constructor(character, metaBonuses, relic) {
@@ -121,6 +122,16 @@ export class Player {
     this.dashRechargeTimer = 0;
     this.dashTimeLeft = 0;
     this.dashAngle = 0;
+
+    // Set by "boon" node picks (see boons.js) — permanent for the run,
+    // independent of the passive-recompute cycle since boons aren't leveled.
+    this.coreValueMult = 1;
+    this.incomingDmgMult = 1;
+    this.lockedBoonPath = null; // once set, only same-path boons are offered again
+
+    // Active ability, independent of the 6 passive-fire weapon slots —
+    // charges over ULTIMATE_CHARGE_TIME seconds, manually triggered.
+    this.ultimateCharge = 0;
   }
 
   xpCurveFor(level) {
@@ -214,6 +225,8 @@ export class Player {
     this.x = clamp(this.x, -worldHalf, worldHalf);
     this.y = clamp(this.y, -worldHalf, worldHalf);
 
+    if (this.ultimateCharge < 1) this.ultimateCharge = Math.min(1, this.ultimateCharge + dt / ULTIMATE_CHARGE_TIME);
+
     if (this.regen > 0 && this.hp < this.maxHp) {
       this.regenAccum += this.regen * dt;
       if (this.regenAccum >= 1) {
@@ -226,7 +239,7 @@ export class Player {
 
   takeDamage(amount) {
     if (this.invulnTimer > 0 || this.dead) return 0;
-    const mitigated = Math.max(1, amount - this.armor);
+    const mitigated = Math.max(1, amount * this.incomingDmgMult - this.armor);
     this.hp -= mitigated;
     this.invulnTimer = 0.6;
     this.hurtFlash = 0.25;

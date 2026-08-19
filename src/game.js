@@ -1,4 +1,4 @@
-import { clamp, randRange, TAU, rng, seedRng, hashSeed } from './utils.js';
+import { clamp, randRange, TAU, rng, seedRng, hashSeed, WORLD_HALF, angleTo } from './utils.js';
 import { Player, getCharacter, listCharacters, getRelic, listRelics } from './player.js';
 import { EnemyManager, FROST_AURA_RADIUS } from './enemies.js';
 import { WeaponSystem, WEAPONS } from './weapons.js';
@@ -13,11 +13,10 @@ import {
 } from './meta.js';
 import { loadSettings, saveSettings, diffMultipliers } from './settings.js';
 import { checkAchievements } from './achievements.js';
+import { rollBoonChoices } from './boons.js';
 import { statusGlowColor } from './statusEffects.js';
 import { audio } from './audio.js';
 import { ui } from './ui.js';
-
-const WORLD_HALF = 2200;
 
 export class Game {
   constructor(canvas) {
@@ -63,6 +62,8 @@ export class Game {
     this.hazards = [];
     this.statSamples = [];
     this._sampleTimer = 0;
+    this.extractTarget = 0;
+    this.extractCollected = 0;
 
     this.enemyManager.onDeath = (e) => this.onEnemyDeath(e);
     this.enemyManager.onPlayerHit = (amount, x, y) => this.onPlayerHit(amount, x, y);
@@ -408,7 +409,7 @@ export class Game {
   selectNode(node) {
     audio.uiClick();
     this.currentNode = node;
-    if (node.type === 'combat' || node.type === 'elite' || node.type === 'boss') {
+    if (node.type === 'combat' || node.type === 'elite' || node.type === 'boss' || node.type === 'extract') {
       this.beginCombatNode(node);
     } else if (node.type === 'shop') {
       this.beginShopNode(node);
@@ -416,6 +417,8 @@ export class Game {
       this.beginTreasureNode(node);
     } else if (node.type === 'rest') {
       this.beginRestNode(node);
+    } else if (node.type === 'boon') {
+      this.beginBoonNode();
     }
   }
 
@@ -429,19 +432,28 @@ export class Game {
     this.nodeActNumber = node.biome.act;
     this.applyBiomeTint(this.nodeBiome);
     this.nodeElapsed = 0;
-    this.nodeDuration = node.type === 'combat' ? randRange(100, 130) : null;
+    this.nodeDuration = (node.type === 'combat' || node.type === 'extract') ? randRange(100, 130) : null;
 
     this.camX = this.player.x; this.camY = this.player.y;
     this.hazards = this.generateHazards(node.biome, this.player.x, this.player.y);
 
     if (node.type === 'elite') {
       const elite = this.enemyManager.spawnElite(node.biome, this.player, WORLD_HALF, this.nodeActNumber);
-      const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura' };
+      const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura', regenerating: 'Regenerating' };
       ui.flashBossBanner(`Elite Enemy (${affixNames[elite.affix] || elite.affix})`);
     } else if (node.type === 'boss') {
       this.enemyManager.spawnBoss(node.biome.boss, this.player, WORLD_HALF);
       ui.flashBossBanner(BOSS_TYPES[node.biome.boss].name);
       this.addShake(14, 0.5);
+    } else if (node.type === 'extract') {
+      this.extractTarget = 5;
+      this.extractCollected = 0;
+      for (let i = 0; i < this.extractTarget; i++) {
+        const a = randRange(0, TAU);
+        const d = randRange(300, 700);
+        this.pickups.spawnCanister(this.player.x + Math.cos(a) * d, this.player.y + Math.sin(a) * d);
+      }
+      ui.flashBossBanner('Extraction: collect the canisters!');
     }
 
     this.state = 'playing';
@@ -555,9 +567,37 @@ export class Game {
     this.state = 'nodeChoice';
     audio.levelUp();
     this.addShake(6, 0.25);
+
+    let title = 'Node Cleared!';
+    if (this.nodeType === 'extract') {
+      const success = this.extractCollected >= this.extractTarget;
+      const bonus = success ? 40 : Math.round(40 * (this.extractCollected / this.extractTarget));
+      this.player.cores += bonus;
+      title = success
+        ? `Extraction Complete! (+${bonus} Cores)`
+        : `Extraction Partial (${this.extractCollected}/${this.extractTarget}, +${bonus} Cores)`;
+    }
+
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
-    ui.showChoiceModal('Node Cleared!', choices, (choice) => {
+    ui.showChoiceModal(title, choices, (choice) => {
       this.applyChoiceTracked(choice);
+      this.advanceRun();
+    });
+  }
+
+  // "Boon" nodes: a real risk/reward tradeoff (buff + drawback), with two
+  // mutually-exclusive paths that lock each other out once either is picked
+  // — a branching choice, not just a bigger number. See boons.js.
+  beginBoonNode() {
+    this.state = 'nodeChoice';
+    const choices = rollBoonChoices(this.player, 2);
+    ui.showChoiceModal('Cursed Altar', choices, (choice) => {
+      choice._apply(this.player);
+      if (choice._path) this.player.lockedBoonPath = choice._path;
+      this.player.recomputeStats(PASSIVES);
+      this.player.hp = Math.min(this.player.hp, this.player.maxHp);
+      this.run.nodesCleared += 1;
+      audio.levelUp();
       this.advanceRun();
     });
   }
@@ -627,6 +667,23 @@ export class Game {
     ui.showEnd(victory, stats, unlocked);
   }
 
+  // Active ability, independent of the 6 passive-fire weapon slots (backlog
+  // item #12: "weapon-swap/active-ability slot"). A big AoE burst, manually
+  // triggered once fully charged (see Player.ULTIMATE_CHARGE_TIME).
+  triggerUltimate() {
+    this.player.ultimateCharge = 0;
+    const radius = 260 * this.player.area;
+    const damage = 60 * this.player.might;
+    this.enemyManager.queryNearby(this.player.x, this.player.y, radius, (e) => {
+      const a = angleTo(this.player.x, this.player.y, e.x, e.y);
+      const dealt = this.enemyManager.damageEnemy(e, damage, a, 300, 'physical');
+      this.particles.damageText(e.x, e.y - 10, dealt);
+    });
+    this.particles.burst(this.player.x, this.player.y, { count: 50, color: '#ffffff', speed: 380, life: 0.7, glow: true });
+    this.addShake(18, 0.5);
+    audio.explosion();
+  }
+
   // ---------------- Event callbacks ----------------
   onEnemyDeath(e) {
     this.killCount += 1;
@@ -665,8 +722,11 @@ export class Game {
       const levels = this.player.gainXp(g.value);
       this.particles.spark(g.x, g.y, 0, '#5ee6ff', 3);
       if (levels) this.queueLevelUps(levels.length);
+    } else if (g.kind === 'canister') {
+      this.extractCollected = (this.extractCollected || 0) + 1;
+      this.particles.burst(g.x, g.y, { count: 14, color: '#7CFC9A', speed: 160, life: 0.4, glow: true });
     } else {
-      this.player.cores += g.value;
+      this.player.cores += g.value * this.player.coreValueMult;
       this.particles.spark(g.x, g.y, 0, '#ffd54a', 3);
     }
   }
@@ -717,11 +777,12 @@ export class Game {
     }
 
     this.player.update(dt, input, WORLD_HALF);
+    if (input.ultimatePressed && this.player.ultimateCharge >= 1) this.triggerUltimate();
     if (this.player.dashTimeLeft > 0) {
       this.particles.spark(this.player.x, this.player.y, this.player.dashAngle + Math.PI, this.player.char.color, 2);
     }
     this.updateHazards(dt);
-    const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless';
+    const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless' || this.nodeType === 'extract';
     this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, spawningEnabled);
     this.weaponSystem.update(dt, this.player);
     this.weaponSystem.checkEvolutions(this.player);
@@ -738,7 +799,7 @@ export class Game {
 
     if (this.player.dead) return; // onPlayerHit already triggered endRun
 
-    if (this.nodeType === 'combat' && this.nodeElapsed >= this.nodeDuration) this.onCombatNodeCleared();
+    if ((this.nodeType === 'combat' || this.nodeType === 'extract') && this.nodeElapsed >= this.nodeDuration) this.onCombatNodeCleared();
     else if (this.nodeType === 'elite' && !this.enemyManager.activeElite) this.onCombatNodeCleared();
     else if (this.nodeType === 'boss' && !this.enemyManager.activeBoss) this.onCombatNodeCleared();
     else if (this.nodeType === 'endless' && this.nodeElapsed >= this.endless.waveDuration) this.onWaveCleared();

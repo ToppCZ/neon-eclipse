@@ -11,6 +11,8 @@ const ICONS = {
   novaBurst: { glyph: '◎', color: '#5ee6ff' },
   homingMissile: { glyph: '➤', color: '#c98cff' },
   chainLightning: { glyph: '⚡', color: '#ffd54a' },
+  ricochetBlade: { glyph: '⤾', color: '#5ee6ff' },
+  minionSpectral: { glyph: 'Ψ', color: '#c98cff' },
   might: { glyph: 'M', color: '#ff5e8a' },
   vitality: { glyph: 'V', color: '#7CFC9A' },
   amulet: { glyph: 'A', color: '#c98cff' },
@@ -35,6 +37,8 @@ const NODE_ICONS = {
   treasure: { glyph: '◆', color: '#c98cff' },
   rest: { glyph: '♥', color: '#5ee6ff' },
   boss: { glyph: '★', color: '#ff5e8a' },
+  boon: { glyph: '☾', color: '#c98cff' },
+  extract: { glyph: '⬢', color: '#7CFC9A' },
 };
 
 const KEY_LABELS = { Space: 'Space', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc' };
@@ -53,7 +57,7 @@ class UI {
   constructor() {
     this.el = {};
     [
-      'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
+      'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'ult-badge', 'weapon-tray',
       'run-progress',
       'boss-banner', 'kill-counter', 'btn-build-summary', 'build-summary-panel',
       'screen-menu', 'btn-play', 'btn-endless', 'btn-daily', 'btn-shop', 'btn-settings',
@@ -125,6 +129,9 @@ class UI {
     this.el.timer.textContent = formatTime(elapsed);
     this.el.goldVal.textContent = Math.floor(player.cores);
     this.el.levelBadge.textContent = `Lv ${player.level}`;
+    const ultPct = Math.round(clamp(player.ultimateCharge, 0, 1) * 100);
+    this.el.ultBadge.textContent = ultPct >= 100 ? 'ULT READY (E)' : `ULT ${ultPct}%`;
+    this.el.ultBadge.classList.toggle('ready', ultPct >= 100);
     this.el.killCounter.textContent = `Kills: ${killCount}`;
     this.el.killCounter.classList.remove('hidden');
     if (runLabel) { this.el.runProgress.textContent = runLabel; this.el.runProgress.classList.remove('hidden'); }
@@ -385,7 +392,7 @@ class UI {
     heading.className = 'settings-subheading';
     heading.textContent = 'Controls (arrows / Shift / P always still work)';
     el.appendChild(heading);
-    const labels = { up: 'Move Up', down: 'Move Down', left: 'Move Left', right: 'Move Right', dash: 'Dash', pause: 'Pause' };
+    const labels = { up: 'Move Up', down: 'Move Down', left: 'Move Left', right: 'Move Right', dash: 'Dash', ultimate: 'Ultimate', pause: 'Pause' };
     for (const action of Object.keys(labels)) {
       el.appendChild(this._settingsRow(labels[action], this._keybindButton(settings.keybinds[action], (code) => {
         onChange(`keybind:${action}`, code);
