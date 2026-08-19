@@ -5,7 +5,7 @@ import { WeaponSystem, WEAPONS } from './weapons.js';
 import { PASSIVES, rollUpgradeChoices, applyUpgradeChoice, rollShopOffers, shopRerollCost } from './upgrades.js';
 import { PickupManager } from './pickups.js';
 import { ParticleSystem } from './particles.js';
-import { BOSS_TYPES } from './enemyData.js';
+import { BOSS_TYPES, BIOMES } from './enemyData.js';
 import { generateRun, currentAct, isLastAct } from './runMap.js';
 import { loadMeta, getMetaBonuses, purchaseUpgrade, recordRunResult } from './meta.js';
 import { audio } from './audio.js';
@@ -28,10 +28,13 @@ export class Game {
     this.meta = loadMeta();
     this.player = null;
     this.state = 'menu';
+    this.mode = 'story'; // 'story' | 'endless'
+    this.pendingMode = 'story';
     this.elapsed = 0; // total time across the whole run (display only)
     this.killCount = 0;
 
     this.run = null;
+    this.endless = null; // { wave, waveDuration } — only set while mode === 'endless'
     this.currentNode = null;
     this.nodeType = null;
     this.nodeBiome = null;
@@ -57,14 +60,19 @@ export class Game {
 
   // ---------------- Menu wiring ----------------
   bindMenus() {
-    const goToCharacterSelect = () => { audio.uiClick(); ui.showCharacterSelect(listCharacters(), (id) => this.showRelicSelect(id)); };
-    ui.el.btnPlay.addEventListener('click', goToCharacterSelect);
+    const goToCharacterSelect = (mode) => {
+      audio.uiClick();
+      this.pendingMode = mode;
+      ui.showCharacterSelect(listCharacters(), (id) => this.showRelicSelect(id));
+    };
+    ui.el.btnPlay.addEventListener('click', () => goToCharacterSelect('story'));
+    ui.el.btnEndless.addEventListener('click', () => goToCharacterSelect('endless'));
     ui.el.btnShop.addEventListener('click', () => { audio.uiClick(); ui.showShop(this.meta, (id) => this.buyMetaUpgrade(id)); });
     ui.el.btnBackChars.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnBackShop.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnResume.addEventListener('click', () => { audio.uiClick(); this.resume(); });
     ui.el.btnQuit.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
-    ui.el.btnRetry.addEventListener('click', goToCharacterSelect);
+    ui.el.btnRetry.addEventListener('click', () => goToCharacterSelect(this.mode));
     ui.el.btnEndMenu.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.muteBtn.addEventListener('click', () => {
       this.muted = !this.muted;
@@ -86,6 +94,11 @@ export class Game {
   }
 
   runLabel() {
+    if (this.mode === 'endless') {
+      if (!this.endless) return '';
+      const elements = this.weaponSystem.synergy ? this.weaponSystem.synergy.elementCount : 0;
+      return `Wave ${this.endless.wave} · Elements ${elements}/4`;
+    }
     if (!this.run) return '';
     const act = currentAct(this.run);
     const elements = this.weaponSystem.synergy ? this.weaponSystem.synergy.elementCount : 0;
@@ -95,11 +108,11 @@ export class Game {
   showRelicSelect(characterId) {
     audio.uiClick();
     const choices = listRelics().map(r => ({ kind: 'relic', id: r.id, title: r.name, subtitle: 'Relic', desc: r.desc, tier: 'legendary' }));
-    ui.showChoiceModal('Choose a Relic', choices, (choice) => this.startRun(characterId, choice.id));
+    ui.showChoiceModal('Choose a Relic', choices, (choice) => this.startRun(characterId, choice.id, this.pendingMode));
   }
 
   // ---------------- Run lifecycle ----------------
-  startRun(characterId, relicId) {
+  startRun(characterId, relicId, mode = 'story') {
     audio.resume();
     const character = getCharacter(characterId);
     const relic = getRelic(relicId);
@@ -111,11 +124,93 @@ export class Game {
     this.weaponSystem.reset();
     this.weaponSystem.equip(character.startWeapon);
 
+    this.mode = mode;
     this.elapsed = 0;
     this.killCount = 0;
-    this.run = generateRun();
 
-    this.goToMap();
+    if (mode === 'endless') {
+      this.run = null;
+      this.startEndlessRun();
+    } else {
+      this.run = generateRun();
+      this.goToMap();
+    }
+  }
+
+  // Wave-based survival mode: no acts/bosses to clear, just an escalating
+  // spawn ramp that never stops. Progression comes from the between-wave
+  // shop (spend in-run Cores on permanent-for-the-run upgrades) instead of
+  // node choices — endless "keep buying upgrades to push further."
+  startEndlessRun() {
+    this.enemyManager.reset();
+    this.pickups.reset();
+    this.particles.clear();
+
+    this.endless = { wave: 1, waveDuration: 40 };
+    this.nodeType = 'endless';
+    this.nodeBiome = BIOMES[0];
+    this.nodeActNumber = this.endlessTier(1);
+    this.nodeElapsed = 0;
+
+    this.camX = this.player.x; this.camY = this.player.y;
+    this.hazards = this.generateHazards(this.nodeBiome, this.player.x, this.player.y);
+
+    this.state = 'playing';
+    ui.hideAllScreens();
+    ui.setHudVisible(true);
+    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel());
+    audio.startMusic();
+  }
+
+  // Difficulty keeps climbing forever with wave count (fed into the same
+  // per-act scaling formulas enemies.js already uses for the story mode).
+  endlessTier(wave) { return 1 + (wave - 1) * 0.5; }
+
+  // Every 5th wave drops in a tougher elite; every 10th a full boss (cycled
+  // through the roster, scaled up by how many times it's been re-fought).
+  spawnWaveThreat() {
+    const wave = this.endless.wave;
+    if (wave % 10 === 0) {
+      const bossIds = Object.keys(BOSS_TYPES);
+      const cycle = Math.floor(wave / 10) - 1;
+      const bossId = bossIds[cycle % bossIds.length];
+      const tierMult = 1 + Math.floor(cycle / bossIds.length) * 0.8;
+      this.enemyManager.spawnBoss(bossId, this.player, WORLD_HALF, tierMult, 1 + (tierMult - 1) * 0.6);
+      ui.flashBossBanner(BOSS_TYPES[bossId].name);
+      this.addShake(14, 0.5);
+    } else if (wave % 5 === 0) {
+      const elite = this.enemyManager.spawnElite(this.nodeBiome, this.player, WORLD_HALF, this.nodeActNumber);
+      const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura' };
+      ui.flashBossBanner(`Elite Enemy (${affixNames[elite.affix] || elite.affix})`);
+    }
+  }
+
+  onWaveCleared() {
+    this.endless.wave += 1;
+    this.state = 'nodeShop';
+    this._shopRerollCount = 0;
+    this.shopState = {
+      player: this.player,
+      offers: rollShopOffers(this.player, this.weaponSystem, 4).map(o => ({ ...o, bought: false })),
+      rerollCost: shopRerollCost(0),
+    };
+    this.shopContinueFn = () => this.continueEndless();
+    audio.levelUp();
+    ui.showNodeShop(this.shopState, (offer) => this.buyShopOffer(offer), () => this.rerollShop(), this.shopContinueFn);
+  }
+
+  continueEndless() {
+    this.nodeElapsed = 0;
+    this.nodeBiome = BIOMES[(this.endless.wave - 1) % BIOMES.length];
+    this.nodeActNumber = this.endlessTier(this.endless.wave);
+    this.hazards = this.generateHazards(this.nodeBiome, this.player.x, this.player.y);
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.12);
+    this.spawnWaveThreat();
+
+    this.state = 'playing';
+    ui.hideAllScreens();
+    ui.setHudVisible(true);
+    ui.updateHud(this.player, this.elapsed, this.weaponSystem, this.killCount, this.runLabel());
   }
 
   goToMap() {
@@ -212,10 +307,8 @@ export class Game {
       offers: rollShopOffers(this.player, this.weaponSystem, 4).map(o => ({ ...o, bought: false })),
       rerollCost: shopRerollCost(0),
     };
-    ui.showNodeShop(this.shopState,
-      (offer) => this.buyShopOffer(offer),
-      () => this.rerollShop(),
-      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+    this.shopContinueFn = () => { this.run.nodesCleared += 1; this.advanceRun(); };
+    ui.showNodeShop(this.shopState, (offer) => this.buyShopOffer(offer), () => this.rerollShop(), this.shopContinueFn);
   }
 
   buyShopOffer(offer) {
@@ -224,10 +317,7 @@ export class Game {
     applyUpgradeChoice(offer, this.player, this.weaponSystem);
     offer.bought = true;
     audio.pickup();
-    ui.renderNodeShop(this.shopState,
-      (o) => this.buyShopOffer(o),
-      () => this.rerollShop(),
-      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+    ui.renderNodeShop(this.shopState, (o) => this.buyShopOffer(o), () => this.rerollShop(), this.shopContinueFn);
   }
 
   rerollShop() {
@@ -238,10 +328,7 @@ export class Game {
     this.shopState.offers = rollShopOffers(this.player, this.weaponSystem, 4).map(o => ({ ...o, bought: false }));
     this.shopState.rerollCost = shopRerollCost(this._shopRerollCount);
     audio.uiClick();
-    ui.renderNodeShop(this.shopState,
-      (o) => this.buyShopOffer(o),
-      () => this.rerollShop(),
-      () => { this.run.nodesCleared += 1; this.advanceRun(); });
+    ui.renderNodeShop(this.shopState, (o) => this.buyShopOffer(o), () => this.rerollShop(), this.shopContinueFn);
   }
 
   beginTreasureNode() {
@@ -314,14 +401,22 @@ export class Game {
     this.state = victory ? 'victory' : 'gameover';
     audio.stopMusic();
     if (victory) audio.victory(); else audio.gameOver();
-    const actReached = this.run.actIndex + 1;
-    const goldEarned = Math.floor(
-      this.player.cores * 0.5 + this.run.nodesCleared * 12 + this.run.actIndex * 60 + (victory ? 150 : 0)
-    );
-    const stats = {
-      time: this.elapsed, level: this.player.level, kills: this.killCount,
-      actReached, nodesCleared: this.run.nodesCleared, goldEarned,
-    };
+
+    let stats;
+    if (this.mode === 'endless') {
+      const wave = this.endless.wave;
+      const goldEarned = Math.floor(this.player.cores * 0.5 + wave * 18);
+      stats = { mode: 'endless', time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned };
+    } else {
+      const actReached = this.run.actIndex + 1;
+      const goldEarned = Math.floor(
+        this.player.cores * 0.5 + this.run.nodesCleared * 12 + this.run.actIndex * 60 + (victory ? 150 : 0)
+      );
+      stats = {
+        mode: 'story', time: this.elapsed, level: this.player.level, kills: this.killCount,
+        actReached, nodesCleared: this.run.nodesCleared, goldEarned,
+      };
+    }
     recordRunResult(this.meta, stats);
     ui.setHudVisible(false);
     ui.showEnd(victory, stats);
@@ -406,7 +501,8 @@ export class Game {
 
     this.player.update(dt, input, WORLD_HALF);
     this.updateHazards(dt);
-    this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, this.nodeType === 'combat');
+    const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless';
+    this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, spawningEnabled);
     this.weaponSystem.update(dt, this.player);
     this.weaponSystem.checkEvolutions(this.player);
     this.pickups.update(dt, this.player, (g) => this.onPickupCollect(g));
@@ -425,6 +521,7 @@ export class Game {
     if (this.nodeType === 'combat' && this.nodeElapsed >= this.nodeDuration) this.onCombatNodeCleared();
     else if (this.nodeType === 'elite' && !this.enemyManager.activeElite) this.onCombatNodeCleared();
     else if (this.nodeType === 'boss' && !this.enemyManager.activeBoss) this.onCombatNodeCleared();
+    else if (this.nodeType === 'endless' && this.nodeElapsed >= this.endless.waveDuration) this.onWaveCleared();
   }
 
   // ---------------- Rendering ----------------

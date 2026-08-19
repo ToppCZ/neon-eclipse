@@ -4,6 +4,8 @@ A bullet-heaven combat core wrapped in a strategic roguelike run structure — n
 
 Pick a character and a build-defining relic, then navigate a branching map across 3 acts — combat, elite, shop, treasure, and rest nodes — choosing your path between fights. In combat, move to dodge and dash past danger while your weapons auto-fire; between fights, spend in-run Cores at shops, pick tiered rewards, and lean into elemental damage-type synergies against enemies with real resistances and weaknesses. Clear all 3 acts and their bosses to win the run.
 
+Prefer no ending? **Endless Mode** drops the act structure for infinite escalating waves: survive a wave, spend Cores at a between-wave shop on permanent-for-the-run upgrades, then push into the next (harder) wave — elites every 5 waves, a scaled-up boss every 10 — for as long as you can last. Best wave reached is tracked alongside the story mode's best act/level on the main menu.
+
 ## Play it — Windows desktop app
 
 Grab the latest build from the [Releases page](https://github.com/ToppCZ/neon-eclipse/releases), unzip it, and run `NeonEclipse.exe`. No browser, no server, no install — it's a real window (WPF + Microsoft Edge WebView2, requires the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — already present on most Windows 10/11 machines).

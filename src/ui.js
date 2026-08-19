@@ -43,7 +43,7 @@ class UI {
       'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
       'run-progress',
       'boss-banner', 'kill-counter',
-      'screen-menu', 'btn-play', 'btn-shop', 'menu-stats',
+      'screen-menu', 'btn-play', 'btn-endless', 'btn-shop', 'menu-stats',
       'screen-characters', 'character-list', 'btn-back-chars',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
       'screen-choice', 'choice-title', 'choice-list',
@@ -112,6 +112,7 @@ class UI {
     this.el.menuStats.innerHTML = `
       <div><b>${meta.stats.totalRuns}</b>Runs</div>
       <div><b>${meta.stats.bestAct || 0}</b>Best Act</div>
+      <div><b>${meta.stats.bestWave || 0}</b>Best Wave</div>
       <div><b>${meta.stats.bestLevel}</b>Best Level</div>
       <div><b>${meta.gold}</b>Gold</div>
     `;
@@ -242,11 +243,14 @@ class UI {
   showEnd(victory, stats) {
     this.hideAllScreens();
     this.show('screen-end');
-    this.el.endTitle.textContent = victory ? 'Run Complete!' : 'You Fell...';
+    const endless = stats.mode === 'endless';
+    this.el.endTitle.textContent = victory ? 'Run Complete!' : (endless ? 'Overwhelmed...' : 'You Fell...');
     this.el.endTitle.style.color = victory ? '#7CFC9A' : '#ff5e8a';
+    const topRow = endless
+      ? `<div><b>Wave ${stats.wave}</b>Wave Reached</div>`
+      : `<div><b>Act ${stats.actReached}</b>Act Reached</div><div><b>${stats.nodesCleared}</b>Nodes Cleared</div>`;
     this.el.endStats.innerHTML = `
-      <div><b>Act ${stats.actReached}</b>Act Reached</div>
-      <div><b>${stats.nodesCleared}</b>Nodes Cleared</div>
+      ${topRow}
       <div><b>${stats.level}</b>Level Reached</div>
       <div><b>${stats.kills}</b>Kills</div>
       <div><b>${formatTime(stats.time)}</b>Time Survived</div>

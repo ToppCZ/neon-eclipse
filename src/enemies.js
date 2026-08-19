@@ -97,10 +97,10 @@ export class EnemyManager {
     return { x, y };
   }
 
-  spawnBoss(bossId, player, worldHalf) {
+  spawnBoss(bossId, player, worldHalf, hpMult = 1, dmgMult = 1) {
     const type = { ...BOSS_TYPES[bossId], isBoss: true };
     const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
-    const e = this.pool.spawn(type, x, y, 1, 1, 1);
+    const e = this.pool.spawn(type, x, y, hpMult, dmgMult, 1);
     e.bossId = bossId;
     this.activeBoss = e;
     if (this.audio) this.audio.bossRoar();
