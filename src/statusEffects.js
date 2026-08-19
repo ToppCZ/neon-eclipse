@@ -66,10 +66,17 @@ export function updateStatuses(e, dt) {
 }
 
 // Render-time glow override so the player can see what's afflicting an enemy.
-export function statusGlowColor(e) {
-  if (e.stunTime > 0) return '#ffe066';
-  if (e.frostTime > 0) return '#5ee6ff';
-  if (e.poisonTime > 0) return '#7CFC9A';
-  if (e.burnTime > 0) return '#ff8a5e';
+// The colorblind palette (Okabe-Ito derived) swaps in colors chosen to stay
+// distinguishable under protanopia/deuteranopia/tritanopia, not just a
+// cosmetic recolor.
+const GLOW_DEFAULT = { stun: '#ffe066', frost: '#5ee6ff', poison: '#7CFC9A', burn: '#ff8a5e' };
+const GLOW_COLORBLIND = { stun: '#F0E442', frost: '#56B4E9', poison: '#009E73', burn: '#E69F00' };
+
+export function statusGlowColor(e, colorblind = false) {
+  const p = colorblind ? GLOW_COLORBLIND : GLOW_DEFAULT;
+  if (e.stunTime > 0) return p.stun;
+  if (e.frostTime > 0) return p.frost;
+  if (e.poisonTime > 0) return p.poison;
+  if (e.burnTime > 0) return p.burn;
   return null;
 }

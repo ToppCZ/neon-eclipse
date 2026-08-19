@@ -55,9 +55,12 @@ class UI {
     [
       'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
       'run-progress',
-      'boss-banner', 'kill-counter',
-      'screen-menu', 'btn-play', 'btn-endless', 'btn-shop', 'btn-settings', 'menu-stats', 'menu-history',
+      'boss-banner', 'kill-counter', 'btn-build-summary', 'build-summary-panel',
+      'screen-menu', 'btn-play', 'btn-endless', 'btn-daily', 'btn-shop', 'btn-settings',
+      'btn-leaderboard', 'menu-stats', 'menu-history',
       'screen-characters', 'character-list', 'btn-back-chars', 'btn-seed',
+      'screen-leaderboard', 'leaderboard-list', 'btn-back-leaderboard',
+      'screen-balance', 'balance-list', 'btn-back-balance', 'btn-balance',
       'tooltip',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
       'screen-choice', 'choice-title', 'choice-list',
@@ -72,6 +75,7 @@ class UI {
     this.screens = [
       'screen-menu', 'screen-characters', 'screen-shop', 'screen-choice',
       'screen-map', 'screen-node-shop', 'screen-settings', 'screen-pause', 'screen-end',
+      'screen-leaderboard', 'screen-balance',
     ].map(id => document.getElementById(id));
 
     this.bindWeaponTrayTooltip();
@@ -82,7 +86,33 @@ class UI {
 
   setHudVisible(visible) {
     this.el.hud.classList.toggle('hidden', !visible);
-    if (!visible) document.body.classList.remove('low-hp');
+    if (!visible) {
+      document.body.classList.remove('low-hp');
+      this.el.buildSummaryPanel.classList.add('hidden');
+    }
+  }
+
+  toggleBuildSummary(player, weaponSystem) {
+    const panel = this.el.buildSummaryPanel;
+    const opening = panel.classList.contains('hidden');
+    if (opening) this.renderBuildSummary(player, weaponSystem);
+    panel.classList.toggle('hidden');
+  }
+
+  renderBuildSummary(player, weaponSystem) {
+    const rows = [];
+    for (const slot of weaponSystem.slots) {
+      const def = WEAPONS[slot.id];
+      const icon = iconFor(slot.id);
+      rows.push(`<div class="build-summary-row"><span style="color:${icon.color}">${icon.glyph}</span><b>${slot.evolved ? def.evolvedName : def.name}</b><span class="sub">Lv ${slot.level}${slot.evolved ? ' ★' : ''}</span></div>`);
+    }
+    for (const [id, level] of player.passives) {
+      const def = PASSIVES[id];
+      if (!def) continue;
+      const icon = iconFor(id);
+      rows.push(`<div class="build-summary-row"><span style="color:${icon.color}">${icon.glyph}</span><b>${def.name}</b><span class="sub">Lv ${level}</span></div>`);
+    }
+    this.el.buildSummaryPanel.innerHTML = `<h4>Current Build</h4>${rows.join('') || '<p class="sub">No weapons or passives yet.</p>'}`;
   }
 
   updateHud(player, elapsed, weaponSystem, killCount, runLabel) {
@@ -190,7 +220,9 @@ class UI {
     for (const c of characters) {
       const card = document.createElement('div');
       card.className = 'char-card';
-      card.innerHTML = `<div class="char-swatch" style="background:${c.color};box-shadow:0 0 16px ${c.color}"></div>
+      card.innerHTML = `<div class="char-swatch" style="box-shadow:0 0 16px ${c.color}66">
+          <svg viewBox="-20 -14 40 28" width="30" height="21"><polygon points="18,0 -12,11 -6,0 -12,-11" fill="${c.color}"/></svg>
+        </div>
         <h3>${c.name}</h3><p>${c.tagline}</p>`;
       card.addEventListener('click', () => onPick(c.id));
       this.el.characterList.appendChild(card);
@@ -303,29 +335,51 @@ class UI {
     this.el.btnNodeShopContinue.onclick = onContinue;
   }
 
-  showSettings(settings, onChange) {
+  showSettings(settings, onChange, slotsInfo = { slots: ['default'], active: 'default' }) {
     this.hideAllScreens();
     this.show('screen-settings');
-    this.renderSettings(settings, onChange);
+    this.renderSettings(settings, onChange, slotsInfo);
   }
 
-  renderSettings(settings, onChange) {
+  renderSettings(settings, onChange, slotsInfo = { slots: ['default'], active: 'default' }) {
     const el = this.el.settingsList;
     el.innerHTML = '';
+
+    const slotHeading = document.createElement('div');
+    slotHeading.className = 'settings-subheading';
+    slotHeading.textContent = 'Save Slot';
+    el.appendChild(slotHeading);
+    const slotRow = document.createElement('div');
+    slotRow.className = 'settings-row';
+    slotRow.appendChild(this._toggleGroup(
+      slotsInfo.slots.map((s) => [s, s]), slotsInfo.active,
+      (v) => onChange('switchSlot', v)));
+    const newSlotBtn = document.createElement('button');
+    newSlotBtn.className = 'btn';
+    newSlotBtn.textContent = '+ New';
+    newSlotBtn.addEventListener('click', () => onChange('newSlot', null));
+    slotRow.appendChild(newSlotBtn);
+    el.appendChild(slotRow);
     el.appendChild(this._settingsRow('Music Volume', this._slider(Math.round(settings.musicVolume * 100), (v) => onChange('musicVolume', v / 100))));
     el.appendChild(this._settingsRow('SFX Volume', this._slider(Math.round(settings.sfxVolume * 100), (v) => onChange('sfxVolume', v / 100))));
     el.appendChild(this._settingsRow('Screen Shake', this._toggleGroup(
       [[0, 'Off'], [0.5, 'Reduced'], [1, 'Full']], settings.screenShake,
-      (v) => { onChange('screenShake', v); this.renderSettings(settings, onChange); })));
+      (v) => { onChange('screenShake', v); this.renderSettings(settings, onChange, slotsInfo); })));
     el.appendChild(this._settingsRow('Reduced Motion', this._toggleGroup(
       [[false, 'Off'], [true, 'On']], settings.reducedMotion,
-      (v) => { onChange('reducedMotion', v); this.renderSettings(settings, onChange); })));
+      (v) => { onChange('reducedMotion', v); this.renderSettings(settings, onChange, slotsInfo); })));
     el.appendChild(this._settingsRow('Show Hitbox', this._toggleGroup(
       [[false, 'Off'], [true, 'On']], settings.showHitbox,
-      (v) => { onChange('showHitbox', v); this.renderSettings(settings, onChange); })));
+      (v) => { onChange('showHitbox', v); this.renderSettings(settings, onChange, slotsInfo); })));
+    el.appendChild(this._settingsRow('Colorblind Mode', this._toggleGroup(
+      [[false, 'Off'], [true, 'On']], settings.colorblindMode,
+      (v) => { onChange('colorblindMode', v); this.renderSettings(settings, onChange, slotsInfo); })));
+    el.appendChild(this._settingsRow('Manual Aim (Shard Cannon)', this._toggleGroup(
+      [[false, 'Off'], [true, 'On']], settings.manualAim,
+      (v) => { onChange('manualAim', v); this.renderSettings(settings, onChange, slotsInfo); })));
     el.appendChild(this._settingsRow('Difficulty', this._toggleGroup(
       [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], settings.difficulty,
-      (v) => { onChange('difficulty', v); this.renderSettings(settings, onChange); })));
+      (v) => { onChange('difficulty', v); this.renderSettings(settings, onChange, slotsInfo); })));
 
     const heading = document.createElement('div');
     heading.className = 'settings-subheading';
@@ -335,7 +389,7 @@ class UI {
     for (const action of Object.keys(labels)) {
       el.appendChild(this._settingsRow(labels[action], this._keybindButton(settings.keybinds[action], (code) => {
         onChange(`keybind:${action}`, code);
-        this.renderSettings(settings, onChange);
+        this.renderSettings(settings, onChange, slotsInfo);
       })));
     }
 
@@ -400,13 +454,43 @@ class UI {
     return wrap;
   }
 
+  showLeaderboard(meta) {
+    this.hideAllScreens();
+    this.show('screen-leaderboard');
+    const rows = (meta.leaderboard || []);
+    this.el.leaderboardList.innerHTML = rows.length ? rows.map((r, i) => {
+      const reach = r.mode === 'endless' ? `Wave ${r.wave}` : `Act ${r.actReached}${r.victory ? ' · Win' : ''}`;
+      return `<div class="shop-row">
+        <div class="shop-row-info"><b>#${i + 1} — ${r.mode === 'endless' ? 'Endless' : 'Story'}</b><p>${reach} · Lv ${r.level} · ${r.kills} kills · ${formatTime(r.time)}</p></div>
+        <span class="shop-row-level">${r.score} pts</span>
+      </div>`;
+    }).join('') : '<p style="color:var(--text-dim);text-align:center;">No runs recorded yet.</p>';
+  }
+
+  showBalance(meta) {
+    this.hideAllScreens();
+    this.show('screen-balance');
+    const ps = meta.pickStats || { weapons: {}, passives: {} };
+    const section = (title, counts, defs) => {
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) return `<h3>${title}</h3><p style="color:var(--text-dim);">No picks recorded yet.</p>`;
+      const rows = entries.map(([id, count]) => {
+        const name = (defs[id] && defs[id].name) || id;
+        return `<div class="shop-row"><div class="shop-row-info"><b>${name}</b></div><span class="shop-row-level">${count} picks</span></div>`;
+      }).join('');
+      return `<h3>${title}</h3>${rows}`;
+    };
+    this.el.balanceList.innerHTML =
+      section('Weapons', ps.weapons, WEAPONS) + section('Passives', ps.passives, PASSIVES);
+  }
+
   showPause() { this.hideAllScreens(); this.show('screen-pause'); }
 
   showEnd(victory, stats, unlockedAchievements = []) {
     this.hideAllScreens();
     this.show('screen-end');
-    const prevBanner = this.el.endStats.parentElement.querySelector('.achievement-banner');
-    if (prevBanner) prevBanner.remove();
+    const prevExtras = this.el.endStats.parentElement.querySelector('.end-extras');
+    if (prevExtras) prevExtras.remove();
     const endless = stats.mode === 'endless';
     this.el.endTitle.textContent = victory ? 'Run Complete!' : (endless ? 'Overwhelmed...' : 'You Fell...');
     this.el.endTitle.style.color = victory ? '#7CFC9A' : '#ff5e8a';
@@ -421,12 +505,37 @@ class UI {
       <div><b>${stats.goldEarned}</b>Gold Earned</div>
       <div><b>${stats.seed}</b>Seed</div>
     `;
-    if (unlockedAchievements.length) {
-      const banner = document.createElement('div');
-      banner.className = 'achievement-banner';
-      banner.innerHTML = unlockedAchievements.map(a => `<div>🏆 <b>${a.name}</b> — ${a.desc}</div>`).join('');
-      this.el.endStats.insertAdjacentElement('afterend', banner);
-    }
+
+    const extras = document.createElement('div');
+    extras.className = 'end-extras';
+    extras.innerHTML = this._statGraphHtml(stats.samples) +
+      (stats.daily ? this._dailyBannerHtml(stats) : '') +
+      (unlockedAchievements.length ? this._achievementBannerHtml(unlockedAchievements) : '');
+    if (extras.innerHTML.trim()) this.el.endStats.insertAdjacentElement('afterend', extras);
+  }
+
+  _dailyBannerHtml(stats) {
+    const label = stats.dailyIsNewBest ? 'New Daily Best!' : 'Daily Challenge';
+    return `<div class="achievement-banner daily-banner">🗓️ <b>${label}</b> — Wave ${stats.wave} (best today: ${stats.dailyBest})</div>`;
+  }
+
+  _statGraphHtml(samples) {
+    if (!samples || samples.length < 2) return '';
+    const w = 380, h = 60, pad = 4;
+    const maxT = samples[samples.length - 1].t || 1;
+    const pts = samples.map((s) => {
+      const x = pad + (s.t / maxT) * (w - pad * 2);
+      const y = pad + (1 - s.hpPct) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<div class="stat-graph">
+      <div class="stat-graph-label">HP over time</div>
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#ff5e8a" stroke-width="2" /></svg>
+    </div>`;
+  }
+
+  _achievementBannerHtml(unlockedAchievements) {
+    return `<div class="achievement-banner">${unlockedAchievements.map(a => `<div>🏆 <b>${a.name}</b> — ${a.desc}</div>`).join('')}</div>`;
   }
 }
 

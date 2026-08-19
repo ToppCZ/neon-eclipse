@@ -128,6 +128,11 @@ export class WeaponSystem {
 
     // Recomputed once per update() tick — see computeSynergy().
     this.synergy = { physical: 1, fire: 1, poison: 1, shock: 1, frost: 1, elementCount: 0 };
+
+    // Manual Aim setting (Shard Cannon only — see fireShardCannon): `aim` is
+    // a world-space point Game sets each frame from the mouse cursor.
+    this.manualAimEnabled = false;
+    this.aim = null;
   }
 
   // Two build archetypes: "Physical Focus" (own both physical weapons) and
@@ -220,9 +225,14 @@ export class WeaponSystem {
   }
 
   fireShardCannon(slot, stats, player) {
-    const target = this.enemyManager.nearest(player.x, player.y, stats.range);
-    if (!target) return;
-    const baseAngle = angleTo(player.x, player.y, target.x, target.y);
+    let baseAngle;
+    if (this.manualAimEnabled && this.aim) {
+      baseAngle = angleTo(player.x, player.y, this.aim.x, this.aim.y);
+    } else {
+      const target = this.enemyManager.nearest(player.x, player.y, stats.range);
+      if (!target) return;
+      baseAngle = angleTo(player.x, player.y, target.x, target.y);
+    }
     const spread = stats.count > 1 ? 0.16 : 0;
     for (let i = 0; i < stats.count; i++) {
       const a = baseAngle + (i - (stats.count - 1) / 2) * spread;

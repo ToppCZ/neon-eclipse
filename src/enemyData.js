@@ -84,3 +84,11 @@ export const BIOMES = [
 export function biomeForAct(actNumber) {
   return BIOMES[actNumber - 1] || BIOMES[BIOMES.length - 1];
 }
+
+// The game's core difficulty curve, centralized here instead of scattered as
+// magic numbers in enemies.js's difficultyScale() — same math, just named and
+// in one place so future balance passes have a single table to tune.
+export const DIFFICULTY_CURVE = {
+  actHpPerAct: 0.6, actDmgPerAct: 0.45, actSpeedPerAct: 0.12, actSpawnPerAct: 0.3,
+  timeHpRate: 0.35, timeDmgRate: 0.12, timeSpeedRate: 0.06, timeSpeedCap: 0.25, timeSpawnRate: 0.4,
+};

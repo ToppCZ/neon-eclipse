@@ -7,7 +7,10 @@ import { PickupManager } from './pickups.js';
 import { ParticleSystem } from './particles.js';
 import { BOSS_TYPES, BIOMES } from './enemyData.js';
 import { generateRun, currentAct, isLastAct } from './runMap.js';
-import { loadMeta, saveMeta, getMetaBonuses, purchaseUpgrade, recordRunResult } from './meta.js';
+import {
+  loadMeta, saveMeta, getMetaBonuses, purchaseUpgrade, recordRunResult,
+  listSlots, getActiveSlot, setActiveSlot, createSlot,
+} from './meta.js';
 import { loadSettings, saveSettings, diffMultipliers } from './settings.js';
 import { checkAchievements } from './achievements.js';
 import { statusGlowColor } from './statusEffects.js';
@@ -34,6 +37,8 @@ export class Game {
     audio.setSfxVolume(this.settings.sfxVolume);
     this.particles.reduced = this.settings.reducedMotion;
     this.enemyManager.diff = diffMultipliers(this.settings.difficulty);
+    this.enemyManager.colorblind = this.settings.colorblindMode;
+    this.weaponSystem.manualAimEnabled = this.settings.manualAim;
     this._settingsReturnTo = 'menu';
     this.player = null;
     this.state = 'menu';
@@ -56,6 +61,8 @@ export class Game {
 
     this.pendingLevelUps = [];
     this.hazards = [];
+    this.statSamples = [];
+    this._sampleTimer = 0;
 
     this.enemyManager.onDeath = (e) => this.onEnemyDeath(e);
     this.enemyManager.onPlayerHit = (amount, x, y) => this.onPlayerHit(amount, x, y);
@@ -72,9 +79,27 @@ export class Game {
     this.shakeTime = Math.max(this.shakeTime, time);
   }
 
+  openSettings() {
+    ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v), { slots: listSlots(), active: getActiveSlot() });
+  }
+
   onSettingChange(key, value) {
     if (key === 'exportSave') { this.exportSave(); return; }
     if (key === 'importSave') { this.importSave(); return; }
+    if (key === 'switchSlot') {
+      setActiveSlot(value);
+      this.meta = loadMeta(value);
+      this.openSettings();
+      return;
+    }
+    if (key === 'newSlot') {
+      const name = (window.prompt('New save slot name:') || '').trim().slice(0, 24);
+      if (!name) return;
+      createSlot(name);
+      this.meta = loadMeta(name);
+      this.openSettings();
+      return;
+    }
     if (key.startsWith('keybind:')) {
       this.settings.keybinds[key.slice('keybind:'.length)] = value;
       saveSettings(this.settings);
@@ -86,6 +111,26 @@ export class Game {
     else if (key === 'sfxVolume') audio.setSfxVolume(value);
     else if (key === 'reducedMotion') this.particles.reduced = value;
     else if (key === 'difficulty') this.enemyManager.diff = diffMultipliers(value);
+    else if (key === 'colorblindMode') this.enemyManager.colorblind = value;
+    else if (key === 'manualAim') this.weaponSystem.manualAimEnabled = value;
+  }
+
+  // Same-conditions-for-everyone-today run: a date-derived seed picks the
+  // character/relic deterministically and forces Hard, without touching the
+  // player's own saved difficulty. Always Endless Mode, since it has no
+  // branching map to also make deterministic. Tracked separately in
+  // meta.dailyBest by calendar date (UTC).
+  startDailyChallenge() {
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const seed = hashSeed(`daily-${dateStr}`);
+    const chars = listCharacters();
+    const relics = listRelics();
+    const character = chars[seed % chars.length];
+    const relic = relics[Math.floor(seed / chars.length) % relics.length];
+    this._pendingSeed = seed;
+    this._dailyChallengeDate = dateStr;
+    this.enemyManager.diff = diffMultipliers('hard');
+    this.startRun(character.id, relic.id, 'endless');
   }
 
   // Downloads meta-progression + settings as one JSON file so progress
@@ -122,8 +167,10 @@ export class Game {
             audio.setSfxVolume(this.settings.sfxVolume);
             this.particles.reduced = this.settings.reducedMotion;
             this.enemyManager.diff = diffMultipliers(this.settings.difficulty);
+            this.enemyManager.colorblind = this.settings.colorblindMode;
+            this.weaponSystem.manualAimEnabled = this.settings.manualAim;
           }
-          ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v));
+          this.openSettings();
           window.alert('Save imported.');
         } catch {
           window.alert('That file could not be read as a Neon Eclipse save.');
@@ -143,7 +190,10 @@ export class Game {
     };
     ui.el.btnPlay.addEventListener('click', () => goToCharacterSelect('story'));
     ui.el.btnEndless.addEventListener('click', () => goToCharacterSelect('endless'));
+    ui.el.btnDaily.addEventListener('click', () => { audio.uiClick(); this.startDailyChallenge(); });
     ui.el.btnShop.addEventListener('click', () => { audio.uiClick(); ui.showShop(this.meta, (id) => this.buyMetaUpgrade(id)); });
+    ui.el.btnLeaderboard.addEventListener('click', () => { audio.uiClick(); ui.showLeaderboard(this.meta); });
+    ui.el.btnBackLeaderboard.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnBackChars.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnBackShop.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnResume.addEventListener('click', () => { audio.uiClick(); this.resume(); });
@@ -166,19 +216,43 @@ export class Game {
       ui.el.btnSeed.textContent = this._pendingSeed != null ? `Seed: ${this._pendingSeed}` : 'Seed: Random';
     });
 
-    ui.el.btnSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'menu'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
-    ui.el.btnPauseSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'pause'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
+    ui.el.btnBuildSummary.addEventListener('click', () => {
+      if (!this.player) return;
+      audio.uiClick();
+      ui.toggleBuildSummary(this.player, this.weaponSystem);
+    });
+
+    ui.el.btnSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'menu'; this.openSettings(); });
+    ui.el.btnPauseSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'pause'; this.openSettings(); });
     ui.el.btnBackSettings.addEventListener('click', () => {
       audio.uiClick();
       if (this._settingsReturnTo === 'pause') { this.state = 'paused'; ui.showPause(); }
       else this.goToMenu();
     });
+    ui.el.btnBalance.addEventListener('click', () => { audio.uiClick(); ui.showBalance(this.meta); });
+    ui.el.btnBackBalance.addEventListener('click', () => { audio.uiClick(); this.openSettings(); });
     ui.el.btnEndMenu.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.muteBtn.addEventListener('click', () => {
       this.muted = !this.muted;
       audio.setMuted(this.muted);
       ui.el.muteBtn.textContent = this.muted ? '🔇' : '🔊';
     });
+  }
+
+  // Dev-only pick-frequency tracking (backlog item #47): every applied
+  // weapon/passive choice increments a counter in meta.pickStats, visible
+  // from Settings -> Balance Stats. Deliberately scoped to pick counts, not
+  // "win rate" — attributing a single win/loss to one item among several
+  // picked over a run isn't reliably meaningful, so it's not claimed here.
+  applyChoiceTracked(choice) {
+    applyUpgradeChoice(choice, this.player, this.weaponSystem);
+    this.meta.pickStats = this.meta.pickStats || { weapons: {}, passives: {} };
+    if (choice.kind === 'weaponNew' || choice.kind === 'weaponLevel') {
+      this.meta.pickStats.weapons[choice.id] = (this.meta.pickStats.weapons[choice.id] || 0) + 1;
+    } else if (choice.kind === 'passive') {
+      this.meta.pickStats.passives[choice.id] = (this.meta.pickStats.passives[choice.id] || 0) + 1;
+    }
+    saveMeta(this.meta);
   }
 
   buyMetaUpgrade(id) {
@@ -235,6 +309,8 @@ export class Game {
     this.mode = mode;
     this.elapsed = 0;
     this.killCount = 0;
+    this.statSamples = [{ t: 0, hpPct: 1 }];
+    this._sampleTimer = 2;
 
     if (mode === 'endless') {
       this.run = null;
@@ -426,7 +502,7 @@ export class Game {
   buyShopOffer(offer) {
     if (offer.bought || this.player.cores < offer.cost) return;
     this.player.cores -= offer.cost;
-    applyUpgradeChoice(offer, this.player, this.weaponSystem);
+    this.applyChoiceTracked(offer);
     offer.bought = true;
     audio.pickup();
     ui.renderNodeShop(this.shopState, (o) => this.buyShopOffer(o), () => this.rerollShop(), this.shopContinueFn);
@@ -447,7 +523,7 @@ export class Game {
     this.state = 'nodeChoice';
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
     ui.showChoiceModal('Treasure Found', choices, (choice) => {
-      applyUpgradeChoice(choice, this.player, this.weaponSystem);
+      this.applyChoiceTracked(choice);
       this.run.nodesCleared += 1;
       audio.pickup();
       this.advanceRun();
@@ -481,7 +557,7 @@ export class Game {
     this.addShake(6, 0.25);
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
     ui.showChoiceModal('Node Cleared!', choices, (choice) => {
-      applyUpgradeChoice(choice, this.player, this.weaponSystem);
+      this.applyChoiceTracked(choice);
       this.advanceRun();
     });
   }
@@ -518,7 +594,7 @@ export class Game {
     if (this.mode === 'endless') {
       const wave = this.endless.wave;
       const goldEarned = Math.floor(this.player.cores * 0.5 + wave * 18);
-      stats = { mode: 'endless', victory, time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned, seed: this.runSeed };
+      stats = { mode: 'endless', victory, time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned, seed: this.runSeed, samples: this.statSamples };
     } else {
       const actReached = this.run.actIndex + 1;
       const goldEarned = Math.floor(
@@ -526,12 +602,27 @@ export class Game {
       );
       stats = {
         mode: 'story', victory, time: this.elapsed, level: this.player.level, kills: this.killCount,
-        actReached, nodesCleared: this.run.nodesCleared, goldEarned, seed: this.runSeed,
+        actReached, nodesCleared: this.run.nodesCleared, goldEarned, seed: this.runSeed, samples: this.statSamples,
       };
     }
     recordRunResult(this.meta, stats);
     const unlocked = checkAchievements(this.meta, stats);
-    if (unlocked.length) saveMeta(this.meta);
+
+    if (this._dailyChallengeDate) {
+      const dateStr = this._dailyChallengeDate;
+      this.meta.dailyBest = this.meta.dailyBest || {};
+      const prevBest = this.meta.dailyBest[dateStr] || 0;
+      stats.daily = dateStr;
+      stats.dailyBest = Math.max(prevBest, stats.wave || 0);
+      stats.dailyIsNewBest = (stats.wave || 0) > prevBest;
+      this.meta.dailyBest[dateStr] = stats.dailyBest;
+      // Restore normal state — the challenge's fixed seed/difficulty only apply to this one run.
+      this._pendingSeed = null;
+      this._dailyChallengeDate = null;
+      this.enemyManager.diff = diffMultipliers(this.settings.difficulty);
+    }
+
+    saveMeta(this.meta);
     ui.setHudVisible(false);
     ui.showEnd(victory, stats, unlocked);
   }
@@ -545,7 +636,7 @@ export class Game {
       const value = e.isBoss ? randRange(30, 60) : (e.isElite ? randRange(15, 28) : randRange(1, 4));
       this.pickups.spawnCores(e.x, e.y, value);
     }
-    const deathColor = statusGlowColor(e) || e.color;
+    const deathColor = statusGlowColor(e, this.settings.colorblindMode) || e.color;
     this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: deathColor, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
     if (audio) audio.enemyDeath();
     if (e.isBoss) this.addShake(16, 0.6);
@@ -594,7 +685,7 @@ export class Game {
     this.particles.burst(this.player.x, this.player.y, { count: 18, color: '#ffd54a', speed: 220, life: 0.5, glow: true });
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
     ui.showChoiceModal('Level Up!', choices, (choice) => {
-      applyUpgradeChoice(choice, this.player, this.weaponSystem);
+      this.applyChoiceTracked(choice);
       if (this.pendingLevelUps.length > 0) {
         this.presentNextLevelUp();
       } else {
@@ -612,8 +703,18 @@ export class Game {
     this.elapsed += dt;
     this.nodeElapsed += dt;
 
+    this._sampleTimer -= dt;
+    if (this._sampleTimer <= 0) {
+      this._sampleTimer = 2;
+      this.statSamples.push({ t: this.elapsed, hpPct: clamp(this.player.hp / this.player.maxHp, 0, 1) });
+    }
+
     const elite = this.enemyManager.activeElite;
     this.player.auraSlowMult = (elite && elite.affix === 'frozenAura' && Math.hypot(this.player.x - elite.x, this.player.y - elite.y) < FROST_AURA_RADIUS) ? 0.6 : 1;
+
+    if (this.weaponSystem.manualAimEnabled) {
+      this.weaponSystem.aim = { x: input.mouseX - this.width / 2 + this.camX, y: input.mouseY - this.height / 2 + this.camY };
+    }
 
     this.player.update(dt, input, WORLD_HALF);
     if (this.player.dashTimeLeft > 0) {

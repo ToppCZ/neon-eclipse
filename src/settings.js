@@ -7,6 +7,8 @@ function defaultSettings() {
     screenShake: 1,       // 0 = off, 0.5 = reduced, 1 = full
     reducedMotion: false, // halves particle counts
     showHitbox: false,    // draws the player's actual collision radius
+    colorblindMode: false, // Okabe-Ito-derived status-effect palette
+    manualAim: false,      // Shard Cannon aims at the mouse cursor instead of auto-targeting
     difficulty: 'normal', // 'easy' | 'normal' | 'hard'
     // Rebindable primary keys. Arrow keys, Shift, and P always work as fixed
     // fallbacks regardless of these (see main.js), so rebinding can't lock

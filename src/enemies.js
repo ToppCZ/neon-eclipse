@@ -1,5 +1,5 @@
 import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, TAU } from './utils.js';
-import { ENEMY_TYPES, BOSS_TYPES } from './enemyData.js';
+import { ENEMY_TYPES, BOSS_TYPES, DIFFICULTY_CURVE as DC } from './enemyData.js';
 import { applyBurn, applyPoison, applyShock, applyFrost, updateStatuses, clearStatuses, statusGlowColor } from './statusEffects.js';
 
 function makeEnemy() {
@@ -60,6 +60,7 @@ export class EnemyManager {
     this.onDeath = null; // (enemy) => void
     this.onPlayerHit = null; // (amount, x, y) => void
     this.diff = { hp: 1, dmg: 1, spawn: 1 }; // difficulty-setting multipliers, set by Game per run
+    this.colorblind = false; // set by Game from settings.colorblindMode
   }
 
   reset() {
@@ -74,15 +75,15 @@ export class EnemyManager {
   // (much larger swings) is what actually drives the run's difficulty curve.
   difficultyScale(nodeElapsed, actNumber) {
     const t = nodeElapsed / 60;
-    const actHp = 1 + (actNumber - 1) * 0.6;
-    const actDmg = 1 + (actNumber - 1) * 0.45;
-    const actSpeed = 1 + (actNumber - 1) * 0.12;
-    const actSpawn = 1 + (actNumber - 1) * 0.3;
+    const actHp = 1 + (actNumber - 1) * DC.actHpPerAct;
+    const actDmg = 1 + (actNumber - 1) * DC.actDmgPerAct;
+    const actSpeed = 1 + (actNumber - 1) * DC.actSpeedPerAct;
+    const actSpawn = 1 + (actNumber - 1) * DC.actSpawnPerAct;
     return {
-      hp: (1 + t * 0.35) * actHp * this.diff.hp,
-      dmg: (1 + t * 0.12) * actDmg * this.diff.dmg,
-      speed: (1 + Math.min(0.25, t * 0.06)) * actSpeed,
-      spawnRate: (1 + t * 0.4) * actSpawn * this.diff.spawn,
+      hp: (1 + t * DC.timeHpRate) * actHp * this.diff.hp,
+      dmg: (1 + t * DC.timeDmgRate) * actDmg * this.diff.dmg,
+      speed: (1 + Math.min(DC.timeSpeedCap, t * DC.timeSpeedRate)) * actSpeed,
+      spawnRate: (1 + t * DC.timeSpawnRate) * actSpawn * this.diff.spawn,
     };
   }
 
@@ -114,8 +115,8 @@ export class EnemyManager {
     const types = this.availableTypes(biome);
     const type = types.reduce((a, b) => (b.hp > a.hp ? b : a), types[0]);
     const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
-    const actHp = 1 + (actNumber - 1) * 0.6;
-    const actDmg = 1 + (actNumber - 1) * 0.45;
+    const actHp = 1 + (actNumber - 1) * DC.actHpPerAct;
+    const actDmg = 1 + (actNumber - 1) * DC.actDmgPerAct;
     const e = this.pool.spawn(type, x, y, 7 * actHp, 1.6 * actDmg, 1.05);
     e.isElite = true;
     e.radius *= 1.4;
@@ -366,7 +367,7 @@ export class EnemyManager {
   render(ctx, camX, camY) {
     for (const e of this.pool.active) {
       const sx = e.x - camX, sy = e.y - camY;
-      const statusGlow = statusGlowColor(e);
+      const statusGlow = statusGlowColor(e, this.colorblind);
       ctx.save();
       ctx.translate(sx, sy);
       ctx.shadowColor = statusGlow || e.glow;
