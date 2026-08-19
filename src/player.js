@@ -116,10 +116,11 @@ export class Player {
 
     this.auraSlowMult = 1; // set externally each frame by a nearby frost-aura elite, if any
 
-    this.dashCooldownTimer = 0;
+    this.maxDashCharges = 1;
+    this.dashCharges = 1;
+    this.dashRechargeTimer = 0;
     this.dashTimeLeft = 0;
     this.dashAngle = 0;
-    this.dashMaxCooldown = DASH_COOLDOWN;
   }
 
   xpCurveFor(level) {
@@ -140,6 +141,7 @@ export class Player {
   // rather than relying on incremental multiplication (which drifts).
   recomputeStats(passiveDefs) {
     const prevMax = this.maxHp;
+    const prevMaxDash = this.maxDashCharges;
     this.maxHp = this.baseMaxHp;
     this.speed = this.baseSpeed;
     this.might = this.baseMight;
@@ -153,6 +155,7 @@ export class Player {
     this.projSpeedMult = 1;
     this.projCountBonus = 0;
     this.thorns = 0;
+    this.maxDashCharges = 1;
 
     for (const [id, level] of this.passives) {
       const def = passiveDefs[id];
@@ -163,12 +166,22 @@ export class Player {
     // the player at a now-smaller fraction of their bar.
     if (this.maxHp > prevMax) this.hp += (this.maxHp - prevMax);
     this.hp = clamp(this.hp, 0, this.maxHp);
+
+    // Same idea for dash charges: gaining a new max charge grants it immediately.
+    if (this.maxDashCharges > prevMaxDash) this.dashCharges += (this.maxDashCharges - prevMaxDash);
+    this.dashCharges = clamp(this.dashCharges, 0, this.maxDashCharges);
   }
 
   update(dt, input, worldHalf) {
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
     if (this.hurtFlash > 0) this.hurtFlash -= dt;
-    if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
+    if (this.dashCharges < this.maxDashCharges) {
+      this.dashRechargeTimer -= dt;
+      if (this.dashRechargeTimer <= 0) {
+        this.dashCharges += 1;
+        this.dashRechargeTimer = this.dashCharges < this.maxDashCharges ? DASH_COOLDOWN : 0;
+      }
+    }
 
     let mx = 0, my = 0;
     if (input.left) mx -= 1;
@@ -178,9 +191,10 @@ export class Player {
     this.moving = mx !== 0 || my !== 0;
     if (this.moving) this.facing = Math.atan2(my, mx);
 
-    if (input.dashPressed && this.dashCooldownTimer <= 0 && this.dashTimeLeft <= 0) {
+    if (input.dashPressed && this.dashCharges > 0 && this.dashTimeLeft <= 0) {
+      this.dashCharges -= 1;
+      if (this.dashRechargeTimer <= 0) this.dashRechargeTimer = DASH_COOLDOWN;
       this.dashTimeLeft = DASH_DURATION;
-      this.dashCooldownTimer = DASH_COOLDOWN;
       this.dashAngle = this.moving ? Math.atan2(my, mx) : this.facing;
       this.invulnTimer = Math.max(this.invulnTimer, DASH_DURATION + 0.05);
     }

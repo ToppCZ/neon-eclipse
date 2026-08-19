@@ -24,6 +24,7 @@ const ICONS = {
   vampire: { glyph: '♥', color: '#7CFC9A' },
   thorns: { glyph: '✦', color: '#ff8a5e' },
   regen: { glyph: '+', color: '#7CFC9A' },
+  dashCharges: { glyph: '»', color: '#5ee6ff' },
 };
 
 const NODE_ICONS = {
@@ -46,7 +47,8 @@ class UI {
       'run-progress',
       'boss-banner', 'kill-counter',
       'screen-menu', 'btn-play', 'btn-endless', 'btn-shop', 'btn-settings', 'menu-stats', 'menu-history',
-      'screen-characters', 'character-list', 'btn-back-chars',
+      'screen-characters', 'character-list', 'btn-back-chars', 'btn-seed',
+      'tooltip',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
       'screen-choice', 'choice-title', 'choice-list',
       'screen-map', 'map-header', 'map-choices',
@@ -61,6 +63,8 @@ class UI {
       'screen-menu', 'screen-characters', 'screen-shop', 'screen-choice',
       'screen-map', 'screen-node-shop', 'screen-settings', 'screen-pause', 'screen-end',
     ].map(id => document.getElementById(id));
+
+    this.bindWeaponTrayTooltip();
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
@@ -98,9 +102,41 @@ class UI {
       lvl.className = 'lvl';
       lvl.textContent = slot.evolved ? '★' : slot.level;
       div.appendChild(lvl);
-      div.title = `${slot.evolved ? def.evolvedName : def.name} — Lv ${slot.level}`;
+      div._tipText = `${slot.evolved ? def.evolvedName : def.name} — Lv ${slot.level}\n${def.desc}`;
       this.el.weaponTray.appendChild(div);
     }
+  }
+
+  // The tray's own children are rebuilt every frame (see above), so per-icon
+  // hover listeners would get silently orphaned, and #weapon-tray itself
+  // inherits pointer-events: none from #hud so it never becomes a hover
+  // target for a reliable mouseleave. A single document-level listener that
+  // re-checks ev.target on every move sidesteps both problems.
+  bindWeaponTrayTooltip() {
+    document.addEventListener('mousemove', (ev) => {
+      const icon = ev.target && ev.target.closest ? ev.target.closest('.weapon-icon') : null;
+      if (icon && icon._tipText) this.showTooltip(ev.clientX, ev.clientY, icon._tipText);
+      else this.hideTooltip();
+    });
+  }
+
+  showTooltip(x, y, text) {
+    const t = this.el.tooltip;
+    if (!t) return;
+    t.textContent = text;
+    t.classList.remove('hidden');
+    this.moveTooltip(x, y);
+  }
+
+  moveTooltip(x, y) {
+    const t = this.el.tooltip;
+    if (!t || t.classList.contains('hidden')) return;
+    t.style.left = `${x + 14}px`;
+    t.style.top = `${y - 12}px`;
+  }
+
+  hideTooltip() {
+    if (this.el.tooltip) this.el.tooltip.classList.add('hidden');
   }
 
   flashBossBanner(name) {
@@ -328,6 +364,7 @@ class UI {
       <div><b>${stats.kills}</b>Kills</div>
       <div><b>${formatTime(stats.time)}</b>Time Survived</div>
       <div><b>${stats.goldEarned}</b>Gold Earned</div>
+      <div><b>${stats.seed}</b>Seed</div>
     `;
   }
 }

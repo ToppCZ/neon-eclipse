@@ -51,9 +51,9 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 8. 📋 Ricochet/bounce weapon archetype (Ricochet Abyss) — new weapon type, needs its own projectile-physics pass.
 9. 📋 Minion/summon weapon archetype (Boneraiser Minions) — pet AI is a meaningfully different system from the current auto-fire weapons.
 10. 📋 Objective-based node variant (Deep Rock Galactic: Survivor) — "extract with X resource" as an alternate combat-node win condition.
-11. 📋 Dash charges upgrade (stack up to 2–3 dashes) — a mobility power spike for late-game builds.
+11. ✅ **Dash Charges passive** ("Phase Coil") — stack up to 3 total dash charges that recharge one at a time; refactored the player's single-cooldown dash into a proper charge system.
 12. 📋 Weapon-swap / active-ability slot separate from the 6 passive-fire weapons.
-13. 📋 New elite affix types beyond the current 3 (explosive/shielded/frozenAura) — e.g. a teleporting or splitting affix.
+13. ✅ **New elite affix: Regenerating** — the elite heals ~1.5% max HP/sec unless burst down, rewarding focused damage over chip damage (Halls of Torment-style positioning/pattern pressure applied to Neon Eclipse's existing affix system).
 
 ### Design / UX (13)
 14. ✅ **Settings screen** — music/SFX volume sliders, screen-shake intensity, reduced motion, hitbox visibility, difficulty — accessible from both main menu and pause.
@@ -64,10 +64,10 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 19. 📋 Colorblind-safe palette mode — resistance/weakness and damage-type colors currently rely on hue alone.
 20. 📋 Rebindable keys (currently WASD/arrows + Space/Shift are hardcoded in `main.js`).
 21. 📋 Gamepad support.
-22. 📋 Tooltip-on-hover for weapon tray icons beyond the existing `title` attribute (a real styled tooltip, not the browser default).
+22. ✅ **Styled hover tooltip** for weapon tray icons, replacing the native browser `title` tooltip — shows name/level/description. (Required a fix: the tray rebuilds every frame, so per-icon listeners got orphaned and pointer-events:none on the container blocked a container-level `mouseleave`; fixed with a single document-level delegated listener.)
 23. 📋 Post-run stat graph (damage-per-second over time, not just totals) — bigger scope, needs a lightweight charting pass.
-24. 📋 "Danger" directional indicator for off-screen elites/bosses (arrow at screen edge pointing toward the threat) — complements the new minimap.
-25. 📋 Confirm-dialog before quitting a run mid-combat (currently one click discards progress).
+24. ✅ **Off-screen threat indicator** — an arrow at the screen edge points toward an active elite/boss once it scrolls off-screen, clamped to the viewport rectangle.
+25. ✅ **Quit confirmation** — pause-menu Quit now confirms before discarding an in-progress run.
 26. 📋 In-run build summary panel (current weapons/passives at a glance, beyond the small tray icons).
 
 ### Graphics / Visual (12)
@@ -75,12 +75,12 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 28. ✅ **Boss health bar** — moved to a readable top-of-screen bar with boss name, replacing reliance on the small over-head bar alone.
 29. ✅ **Low-HP vignette pulse** — the existing static vignette now intensifies and pulses red under 25% HP.
 30. ✅ **Elemental-tinted death particles** — burst color now reflects the enemy's active status effect (burn/poison/shock/frost) at time of death instead of always using the enemy's base color.
-31. 📋 Player dash trail/afterimage effect.
+31. ✅ **Player dash trail** — trailing sparks spawn behind the player each frame of a dash, colored by the character's own color.
 32. 📋 Weapon projectile trails (currently flat-colored shapes with no motion trail).
 33. 📋 Background parallax layer (distant stars/nebula) for depth beyond the flat grid.
-34. 📋 Level-up radial burst/flash effect distinct from the existing particle burst.
-35. 📋 Cores/XP magnet "pull line" visual when items are being drawn toward the player.
-36. 📋 Persistent visual ring for the frozenAura elite affix's actual slow radius (currently invisible — the effect exists but isn't shown).
+34. ✅ **Level-up radial burst** — a gold particle burst now fires at the moment a level-up modal opens, distinct from the existing hit-effect particles.
+35. ✅ **Magnet pull-line visual** — pickups being drawn toward the player now render a short comet-tail line opposite their velocity.
+36. ✅ **Frost-aura visual ring** — the frozenAura elite affix's actual slow radius (previously invisible — the mechanic existed but wasn't shown) now renders as a translucent cyan ring matching the real gameplay radius exactly (shared constant, not eyeballed).
 37. 📋 Screen-edge tint tied to biome accent color (currently only the world-boundary rectangle uses biome accent).
 38. 📋 Character select/relic select portrait polish (currently flat color swatches).
 
@@ -90,7 +90,7 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 41. ✅ **Run-history recording** in `meta.js` (last 5 runs, mode-aware).
 42. 📋 Achievements system (persistent list of unlockable milestones — "reach wave 20", "clear act 3 without hitting a hazard").
 43. 📋 Local leaderboard / best-run replay data (store enough of a run's event log to show a compressed replay).
-44. 📋 Seeded runs (deterministic RNG seed shown post-run, enterable pre-run) for sharing/comparing runs.
+44. ✅ **Seeded runs** — a seed (numeric or typed word, hashed) can be set from the character-select screen and is shown on the end screen. The whole codebase already funneled randomness through one `rng()` in `utils.js`, so reseeding it at run start makes every roll (node types, upgrade offers, enemy/elite choices, hazard placement, loot) reproducible from that seed. Caveat, stated honestly: real-time spawn cadence still depends on frame-rate/dt, so this reproduces the *sequence of rolls* given identical input, not a frame-perfect replay.
 45. 📋 Save-slot support (currently one global save; no multiple profiles).
 46. 📋 Weekly/daily challenge run with a fixed seed and modifier set.
 47. 📋 Telemetry-free local balance dashboard (dev-only: weapon pick-rate / win-rate tracking in `localStorage` to guide future balance passes).
@@ -98,15 +98,25 @@ Legend: ✅ = implemented and verified this pass · 📋 = backlog (scored but n
 49. 📋 Export/import save data (JSON download/upload) so progress survives a browser data clear.
 50. 📋 Config-driven enemy/weapon balance (move magic numbers in `enemyData.js`/`weapons.js` into a single tunable table for faster iteration).
 
-## 3. What shipped this pass
+## 3. What shipped
 
-15 of the 50 items are implemented and verified end-to-end in a real headless-browser
-session: Settings screen (volume/shake/motion/hitbox/difficulty) reachable from menu and
-pause, a minimap, a proper boss health bar, a pulsing low-HP vignette, elemental death-particle
-tinting, two new passives (Thorns, Second Wind), difficulty-tier scaling wired into the
-existing spawn/HP/damage curve, and a run-history log on the main menu — all backed by
-`localStorage` persistence separate from the existing meta-progression save.
+**Pass 1** (15 items): Settings screen (volume/shake/motion/hitbox/difficulty) reachable
+from menu and pause, a minimap, a proper boss health bar, a pulsing low-HP vignette,
+elemental death-particle tinting, two new passives (Thorns, Second Wind), difficulty-tier
+scaling wired into the existing spawn/HP/damage curve, and a run-history log on the main
+menu — all backed by `localStorage` persistence separate from the existing meta-progression
+save.
 
-The other 35 are scored and described above for prioritization, not left as vague notes —
-each names the specific system it touches and, where relevant, which researched game it
-came from.
+**Pass 2** (10 more items): quit-run confirmation, an off-screen threat indicator for
+elites/bosses, a styled hover tooltip on the weapon tray (with a real bug fix along the
+way — the tray rebuilds every frame, which orphaned the first delegation attempt), a
+visible frost-aura ring matching the actual slow radius, a player dash trail, a level-up
+particle burst, a magnet pull-line visual, a new "Regenerating" elite affix, a Dash
+Charges passive (refactored the player's dash from single-cooldown to a proper
+multi-charge system), and seeded runs (reusing the codebase's existing single `rng()`
+chokepoint in `utils.js`, with the determinism caveat stated honestly above).
+
+25 of the 50 items are now implemented and verified end-to-end in real headless-browser
+sessions (screenshots + state assertions, not just `node --check`). The remaining 25 are
+scored and described above for prioritization — each names the specific system it touches
+and, where relevant, which researched game it came from.

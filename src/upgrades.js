@@ -52,6 +52,11 @@ export const PASSIVES = {
     desc: '+0.3 HP/s regen (+mastery at 5)',
     apply(player, level) { player.regen += 0.3 * level + (level >= 5 ? 0.3 : 0); },
   },
+  dashCharges: {
+    id: 'dashCharges', name: 'Phase Coil', maxLevel: 2, icon: 'dashCharges',
+    desc: '+1 max dash charge',
+    apply(player, level) { player.maxDashCharges += level; },
+  },
 };
 
 export const TIER_COLORS = { common: '#9aa4c9', rare: '#5ee6ff', legendary: '#ffd54a' };

@@ -48,6 +48,19 @@ export class PickupManager {
   render(ctx, camX, camY) {
     for (const g of this.pool.active) {
       const sx = g.x - camX, sy = g.y - camY + Math.sin(g.bob) * 2;
+      if (g.attracted) {
+        const ang = Math.atan2(g.vy, g.vx);
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = g.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - Math.cos(ang) * 14, sy - Math.sin(ang) * 14);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       ctx.save();
       ctx.translate(sx, sy);
       ctx.shadowColor = g.color;

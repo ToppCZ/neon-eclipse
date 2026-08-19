@@ -14,7 +14,9 @@ function makeEnemy() {
   };
 }
 
-export const ELITE_AFFIXES = ['explosive', 'shielded', 'frozenAura'];
+export const ELITE_AFFIXES = ['explosive', 'shielded', 'frozenAura', 'regenerating'];
+export const FROST_AURA_RADIUS = 220;
+const REGEN_AFFIX_RATE = 0.015; // fraction of maxHp/sec — encourages bursting it down rather than chipping
 
 function makeEnemyShot() {
   return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, radius: 6, life: 4, color: '#c98cff', __alive: true };
@@ -156,6 +158,10 @@ export class EnemyManager {
       e._statusSpeedMult = status.speedMult;
       if (!status.stunned) {
         this.runBehavior(e, dt, player, worldHalf);
+      }
+
+      if (e.affix === 'regenerating' && e.hp > 0 && e.hp < e.maxHp) {
+        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * REGEN_AFFIX_RATE * dt);
       }
 
       if (e.knockX || e.knockY) {
@@ -389,6 +395,20 @@ export class EnemyManager {
       }
       ctx.restore();
 
+      if (e.isElite && e.affix === 'frozenAura') {
+        ctx.save();
+        ctx.globalAlpha = 0.1;
+        ctx.fillStyle = '#5ee6ff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, FROST_AURA_RADIUS, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#5ee6ff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
       if (e.isBoss || e.isElite || e.maxHp > 30) {
         const w = e.isBoss ? 70 : (e.isElite ? 50 : 26);
         const pct = clamp(e.hp / e.maxHp, 0, 1);
@@ -424,7 +444,7 @@ export class EnemyManager {
   }
 }
 
-const AFFIX_LABELS = { explosive: 'EXPLOSIVE', shielded: 'SHIELDED', frozenAura: 'FROST AURA' };
+const AFFIX_LABELS = { explosive: 'EXPLOSIVE', shielded: 'SHIELDED', frozenAura: 'FROST AURA', regenerating: 'REGENERATING' };
 function affixLabel(affix) { return AFFIX_LABELS[affix] || affix; }
 
 function drawSpikyBlob(ctx, radius, spikes, t) {

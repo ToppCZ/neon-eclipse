@@ -1,6 +1,6 @@
-import { clamp, randRange, TAU } from './utils.js';
+import { clamp, randRange, TAU, rng, seedRng, hashSeed } from './utils.js';
 import { Player, getCharacter, listCharacters, getRelic, listRelics } from './player.js';
-import { EnemyManager } from './enemies.js';
+import { EnemyManager, FROST_AURA_RADIUS } from './enemies.js';
 import { WeaponSystem, WEAPONS } from './weapons.js';
 import { PASSIVES, rollUpgradeChoices, applyUpgradeChoice, rollShopOffers, shopRerollCost } from './upgrades.js';
 import { PickupManager } from './pickups.js';
@@ -93,8 +93,24 @@ export class Game {
     ui.el.btnBackChars.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnBackShop.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnResume.addEventListener('click', () => { audio.uiClick(); this.resume(); });
-    ui.el.btnQuit.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
+    ui.el.btnQuit.addEventListener('click', () => {
+      if (!window.confirm('Quit this run? Progress will be lost.')) return;
+      audio.uiClick();
+      this.goToMenu();
+    });
     ui.el.btnRetry.addEventListener('click', () => goToCharacterSelect(this.mode));
+
+    ui.el.btnSeed.addEventListener('click', () => {
+      const input = window.prompt('Enter a seed (letters or numbers, blank = random):', this._pendingSeed != null ? String(this._pendingSeed) : '');
+      if (input === null) return;
+      const trimmed = input.trim();
+      if (trimmed === '') { this._pendingSeed = null; }
+      else {
+        const asNum = Number(trimmed);
+        this._pendingSeed = Number.isFinite(asNum) ? (Math.abs(Math.floor(asNum)) >>> 0) : hashSeed(trimmed);
+      }
+      ui.el.btnSeed.textContent = this._pendingSeed != null ? `Seed: ${this._pendingSeed}` : 'Seed: Random';
+    });
 
     ui.el.btnSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'menu'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
     ui.el.btnPauseSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'pause'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
@@ -144,6 +160,9 @@ export class Game {
   // ---------------- Run lifecycle ----------------
   startRun(characterId, relicId, mode = 'story') {
     audio.resume();
+    const seed = this._pendingSeed != null ? this._pendingSeed : Math.floor(Math.random() * 0xffffffff);
+    seedRng(seed);
+    this.runSeed = seed;
     const character = getCharacter(characterId);
     const relic = getRelic(relicId);
     const bonuses = getMetaBonuses(this.meta);
@@ -436,7 +455,7 @@ export class Game {
     if (this.mode === 'endless') {
       const wave = this.endless.wave;
       const goldEarned = Math.floor(this.player.cores * 0.5 + wave * 18);
-      stats = { mode: 'endless', victory, time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned };
+      stats = { mode: 'endless', victory, time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned, seed: this.runSeed };
     } else {
       const actReached = this.run.actIndex + 1;
       const goldEarned = Math.floor(
@@ -444,7 +463,7 @@ export class Game {
       );
       stats = {
         mode: 'story', victory, time: this.elapsed, level: this.player.level, kills: this.killCount,
-        actReached, nodesCleared: this.run.nodesCleared, goldEarned,
+        actReached, nodesCleared: this.run.nodesCleared, goldEarned, seed: this.runSeed,
       };
     }
     recordRunResult(this.meta, stats);
@@ -457,7 +476,7 @@ export class Game {
     this.killCount += 1;
     this.pickups.spawnXp(e.x, e.y, e.xp);
     const coreChance = e.isBoss ? 1 : (e.isElite ? 0.9 : 0.16 * clamp(this.player.luck, 0.5, 3));
-    if (Math.random() < coreChance) {
+    if (rng() < coreChance) {
       const value = e.isBoss ? randRange(30, 60) : (e.isElite ? randRange(15, 28) : randRange(1, 4));
       this.pickups.spawnCores(e.x, e.y, value);
     }
@@ -507,6 +526,7 @@ export class Game {
     this.state = 'levelup';
     audio.levelUp();
     this.addShake(4, 0.2);
+    this.particles.burst(this.player.x, this.player.y, { count: 18, color: '#ffd54a', speed: 220, life: 0.5, glow: true });
     const choices = rollUpgradeChoices(this.player, this.weaponSystem, 3);
     ui.showChoiceModal('Level Up!', choices, (choice) => {
       applyUpgradeChoice(choice, this.player, this.weaponSystem);
@@ -528,9 +548,12 @@ export class Game {
     this.nodeElapsed += dt;
 
     const elite = this.enemyManager.activeElite;
-    this.player.auraSlowMult = (elite && elite.affix === 'frozenAura' && Math.hypot(this.player.x - elite.x, this.player.y - elite.y) < 220) ? 0.6 : 1;
+    this.player.auraSlowMult = (elite && elite.affix === 'frozenAura' && Math.hypot(this.player.x - elite.x, this.player.y - elite.y) < FROST_AURA_RADIUS) ? 0.6 : 1;
 
     this.player.update(dt, input, WORLD_HALF);
+    if (this.player.dashTimeLeft > 0) {
+      this.particles.spark(this.player.x, this.player.y, this.player.dashAngle + Math.PI, this.player.char.color, 2);
+    }
     this.updateHazards(dt);
     const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless';
     this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, spawningEnabled);
@@ -589,7 +612,40 @@ export class Game {
 
     if (this.player && (this.state === 'playing' || this.state === 'paused' || this.state === 'levelup' || this.state === 'nodeShop')) {
       this.drawMinimap(ctx);
+      this.drawThreatIndicators(ctx);
       if (this.enemyManager.activeBoss) this.drawBossBar(ctx, this.enemyManager.activeBoss);
+    }
+  }
+
+  // Arrow at the screen edge pointing toward an active elite/boss once it
+  // scrolls off-screen, so the player can navigate back to (or away from) it.
+  drawThreatIndicators(ctx) {
+    const targets = [];
+    if (this.enemyManager.activeBoss) targets.push({ e: this.enemyManager.activeBoss, color: '#ff5e8a' });
+    if (this.enemyManager.activeElite) targets.push({ e: this.enemyManager.activeElite, color: '#ffd54a' });
+    if (!targets.length) return;
+
+    const halfW = this.width / 2, halfH = this.height / 2, margin = 30;
+    for (const { e, color } of targets) {
+      const rx = e.x - this.camX, ry = e.y - this.camY;
+      if (Math.abs(rx) < halfW - 40 && Math.abs(ry) < halfH - 40) continue; // already on-screen
+      const angle = Math.atan2(ry, rx);
+      const cos = Math.cos(angle) || 1e-6, sin = Math.sin(angle) || 1e-6;
+      const scale = Math.min((halfW - margin) / Math.abs(cos), (halfH - margin) / Math.abs(sin));
+      const px = halfW + cos * scale, py = halfH + sin * scale;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(angle);
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-8, 7);
+      ctx.lineTo(-8, -7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
   }
 

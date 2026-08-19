@@ -34,7 +34,22 @@ export function makeRng(seed) {
   };
 }
 
-export const rng = makeRng(Date.now() & 0xffffffff);
+// The whole codebase draws randomness through this one `rng()` function
+// rather than calling makeRng() output directly, so a run can be reseeded
+// (see seedRng below) without touching any other call site.
+let _rngImpl = makeRng(Date.now() & 0xffffffff);
+export function rng() { return _rngImpl(); }
+
+export function seedRng(seed) {
+  _rngImpl = makeRng(seed >>> 0);
+}
+
+// Small string hash so a player can type a word as a seed, not just a number.
+export function hashSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
 
 export function randRange(min, max) {
   return min + rng() * (max - min);

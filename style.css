@@ -164,6 +164,22 @@ body.low-hp #vignette {
   border-radius: 8px; padding: 1px 4px;
 }
 .weapon-icon.evolved { border-color: var(--gold); box-shadow: 0 0 14px #ffd54a99; }
+.weapon-icon { pointer-events: all; cursor: default; }
+
+#tooltip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  max-width: 220px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
 
 /* ---------- Boss banner / kill counter ---------- */
 #boss-banner {
@@ -276,6 +292,7 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
   pointer-events: all;
 }
 .char-card:hover { transform: translateY(-3px); border-color: var(--cyan); }
+.seed-btn { margin-bottom: 14px; font-size: 12px; padding: 8px 14px; }
 .char-swatch { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 10px; }
 .char-card h3 { margin: 0 0 4px; font-size: 15px; }
 .char-card p { margin: 0; font-size: 11px; color: var(--text-dim); }
