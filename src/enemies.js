@@ -1,4 +1,4 @@
-import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, TAU } from './utils.js';
+import { Pool, randRange, angleTo, dist, dist2, clamp, weightedPick, rng, TAU } from './utils.js';
 import { ENEMY_TYPES, BOSS_TYPES, DIFFICULTY_CURVE as DC } from './enemyData.js';
 import { applyBurn, applyPoison, applyShock, applyFrost, updateStatuses, clearStatuses, statusGlowColor } from './statusEffects.js';
 
@@ -11,6 +11,7 @@ function makeEnemy() {
     burnTime: 0, burnDps: 0, poisonTime: 0, poisonStacks: 0, poisonDpsPerStack: 0,
     stunTime: 0, frostTime: 0, frostStacks: 0, frostSlowPerStack: 0,
     affix: null, shieldHp: 0, shieldMaxHp: 0, _chargePulse: 0,
+    facing: 0, poise: 1, poiseMax: 1, staggerTime: 0,
   };
 }
 
@@ -19,7 +20,7 @@ export const FROST_AURA_RADIUS = 220;
 const REGEN_AFFIX_RATE = 0.015; // fraction of maxHp/sec — encourages bursting it down rather than chipping
 
 function makeEnemyShot() {
-  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, radius: 6, life: 4, color: '#c98cff', __alive: true };
+  return { x: 0, y: 0, vx: 0, vy: 0, damage: 0, radius: 6, life: 4, color: '#c98cff', __alive: true, reflected: false };
 }
 
 export class EnemyManager {
@@ -48,10 +49,17 @@ export class EnemyManager {
       e.knockX = 0; e.knockY = 0;
       e._statusSpeedMult = 1;
       e.affix = null; e.shieldHp = 0; e.shieldMaxHp = 0;
+      e.facing = 0;
+      // Poise: how much burst damage an enemy can absorb before staggering.
+      // Bigger enemies (bosses/elites already scale hp) take proportionally
+      // more to stagger, so a single weak hit can't lock them down forever.
+      e.poiseMax = Math.max(14, e.maxHp * 0.22);
+      e.poise = e.poiseMax;
+      e.staggerTime = 0;
       clearStatuses(e);
     });
     this.shots = new Pool(makeEnemyShot, (s, x, y, vx, vy, damage, color) => {
-      Object.assign(s, { x, y, vx, vy, damage, life: 4, color });
+      Object.assign(s, { x, y, vx, vy, damage, life: 4, color, reflected: false });
     });
 
     // A short guaranteed-quiet beat at the start of every node so the player
@@ -119,7 +127,7 @@ export class EnemyManager {
     return e;
   }
 
-  spawnElite(biome, player, worldHalf, actNumber) {
+  spawnElite(biome, player, worldHalf, actNumber, weaponSystem = null) {
     const types = this.availableTypes(biome);
     const type = types.reduce((a, b) => (b.hp > a.hp ? b : a), types[0]);
     const { x, y } = this.spawnPointAround(player.x, player.y, worldHalf);
@@ -128,7 +136,7 @@ export class EnemyManager {
     const e = this.pool.spawn(type, x, y, 7 * actHp, 1.6 * actDmg, 1.05);
     e.isElite = true;
     e.radius *= 1.4;
-    e.affix = ELITE_AFFIXES[Math.floor(randRange(0, ELITE_AFFIXES.length))];
+    e.affix = this.pickAdaptiveAffix(weaponSystem);
     if (e.affix === 'shielded') {
       e.shieldMaxHp = e.maxHp * 0.5;
       e.shieldHp = e.shieldMaxHp;
@@ -138,8 +146,28 @@ export class EnemyManager {
     return e;
   }
 
+  // Weights the affix roll against the player's current build instead of
+  // picking uniformly at random, so elites feel like they're actually
+  // countering you rather than just being a random damage-sponge reskin.
+  pickAdaptiveAffix(weaponSystem) {
+    const weights = ELITE_AFFIXES.map((a) => ({ weight: 1, value: a }));
+    if (weaponSystem) {
+      const avgLevel = weaponSystem.slots.length
+        ? weaponSystem.slots.reduce((s, sl) => s + sl.level, 0) / weaponSystem.slots.length
+        : 1;
+      const closeRange = weaponSystem.hasWeapon('orbitDrones') || weaponSystem.hasWeapon('pulseBlade');
+      for (const w of weights) {
+        if (w.value === 'frozenAura' && closeRange) w.weight *= 2.5; // punishes staying in melee range
+        if (w.value === 'shielded' && avgLevel >= 5) w.weight *= 2; // denies burst-focused builds a one-shot
+        if (w.value === 'regenerating' && avgLevel >= 5) w.weight *= 1.5; // denies low-uptime poke builds
+      }
+    }
+    return weightedPick(weights);
+  }
+
   update(dt, nodeElapsed, player, worldHalf, biome, actNumber, spawningEnabled = true) {
     const scale = this.difficultyScale(nodeElapsed, actNumber);
+    this._player = player; // for damageEnemy's crit-chance lookup
 
     if (spawningEnabled) {
       this.spawnTimer -= dt;
@@ -165,8 +193,21 @@ export class EnemyManager {
 
       const status = updateStatuses(e, dt);
       e._statusSpeedMult = status.speedMult;
-      if (!status.stunned) {
+
+      // Staggered enemies (poise broken by a burst hit) are locked out of
+      // their behavior for a beat — a distinct "punish window" from a stun,
+      // which only enemies with the shock status get.
+      if (e.staggerTime > 0) {
+        e.staggerTime -= dt;
+      } else if (!status.stunned) {
         this.runBehavior(e, dt, player, worldHalf);
+      }
+      e.facing = angleTo(e.x, e.y, player.x, player.y);
+
+      // Poise regenerates back to full when the enemy hasn't been staggered
+      // recently, so it has to be burst down again rather than chipped away.
+      if (e.staggerTime <= 0 && e.poise < e.poiseMax) {
+        e.poise = Math.min(e.poiseMax, e.poise + e.poiseMax * 0.2 * dt);
       }
 
       if (e.affix === 'regenerating' && e.hp > 0 && e.hp < e.maxHp) {
@@ -207,6 +248,25 @@ export class EnemyManager {
       if (s.life <= 0) return false;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
+
+      if (s.reflected) {
+        // A dash-deflected shot hunts the nearest enemy instead of just
+        // flying back the way it came, so deflecting is a reliable counter.
+        let hit = null, bestD = Infinity;
+        for (const e of this.pool.active) {
+          const d = dist2(s.x, s.y, e.x, e.y);
+          if (d <= (s.radius + e.radius) * (s.radius + e.radius) && d < bestD) { bestD = d; hit = e; }
+        }
+        if (hit) {
+          const a = angleTo(s.x, s.y, hit.x, hit.y);
+          const dealt = this.damageEnemy(hit, s.damage * 1.5, a, 100, 'physical');
+          this.particles.damageText(hit.x, hit.y - 10, dealt);
+          this.particles.spark(s.x, s.y, a, '#ffd54a', 4);
+          return false;
+        }
+        return true;
+      }
+
       const r = s.radius + player.radius;
       if (dist2(s.x, s.y, player.x, player.y) <= r * r) {
         if (this.onPlayerHit) this.onPlayerHit(s.damage, player.x, player.y);
@@ -214,6 +274,20 @@ export class EnemyManager {
       }
       return true;
     });
+  }
+
+  // A dash sweeps through a small radius and turns back any enemy shots
+  // caught in it — a skill-based counter to ranged telegraphs, not just
+  // pure damage-avoidance.
+  deflectShotsNear(x, y, radius) {
+    const r2 = radius * radius;
+    for (const s of this.shots.active) {
+      if (s.reflected || dist2(s.x, s.y, x, y) > r2) continue;
+      s.reflected = true;
+      s.vx *= -1.3; s.vy *= -1.3;
+      s.color = '#ffd54a';
+      if (this.audio) this.audio.hit();
+    }
   }
 
   runBehavior(e, dt, player, worldHalf) {
@@ -332,30 +406,97 @@ export class EnemyManager {
   }
 
   // Called by weapon system when a projectile hits an enemy. Returns the
-  // actual damage applied (after resistance) so callers can show accurate
-  // damage-number popups.
+  // actual damage applied (after resistance, before mitigation-adjacent
+  // bonuses like crit/backstab/combos are folded back in) so callers can
+  // show accurate damage-number popups.
   damageEnemy(e, amount, knockAngle, knockForce = 0, damageType = 'physical') {
     const resist = (e.type && e.type.resistances && e.type.resistances[damageType]) || 1;
-    const finalAmount = amount * resist;
+    let finalAmount = amount * resist;
+
+    // Crit chance scales with the player's luck stat, giving it combat
+    // relevance beyond drop/pickup rolls.
+    const luck = this._player ? this._player.luck : 1;
+    const isCrit = rng() < clamp(0.06 * luck, 0.05, 0.4);
+    if (isCrit) finalAmount *= 1.75;
+
+    // Backstab: knockAngle points from the damage source toward the enemy
+    // (it's also the knockback direction). If that's roughly the same
+    // direction the enemy is already facing (toward the player), the hit
+    // landed from behind it relative to its own heading.
+    let isBackstab = false;
+    if (knockForce > 0) {
+      let diff = knockAngle - e.facing;
+      while (diff > Math.PI) diff -= TAU;
+      while (diff < -Math.PI) diff += TAU;
+      if (Math.abs(diff) < 0.7) { isBackstab = true; finalAmount *= 1.4; }
+    }
+
     let remaining = finalAmount;
     if (e.shieldHp > 0) {
       const absorbed = Math.min(e.shieldHp, remaining);
       e.shieldHp -= absorbed;
       remaining -= absorbed;
     }
+
+    // Status combo reactions: landing an element on a target already
+    // carrying its opposite (frost+shock, fire+poison) triggers a bonus
+    // burst and consumes both statuses, rewarding mixed-element builds
+    // over stacking one type.
+    let comboResult = null;
+    switch (damageType) {
+      case 'fire': comboResult = applyBurn(e, finalAmount * 0.25, 3); break;
+      case 'poison': comboResult = applyPoison(e, finalAmount * 0.18, 4); break;
+      case 'shock': comboResult = applyShock(e, 0.35); break;
+      case 'frost': comboResult = applyFrost(e, 0.2, 2.2); break;
+    }
+    let comboBonus = 0;
+    if (comboResult) {
+      comboBonus = finalAmount * 0.8;
+      remaining += comboBonus;
+      if (comboResult === 'shatter') {
+        e.frostStacks = 0; e.frostTime = 0;
+        e.stunTime = Math.max(e.stunTime, 0.6);
+      } else if (comboResult === 'combust') {
+        e.poisonStacks = 0; e.poisonTime = 0; e.burnTime = 0; e.burnDps = 0;
+      }
+      this.particles.burst(e.x, e.y, { count: 14, color: comboResult === 'shatter' ? '#5ee6ff' : '#ff8a5e', speed: 220, life: 0.4, glow: true });
+      this.particles.labelText(e.x, e.y - 24, comboResult === 'shatter' ? 'SHATTER!' : 'COMBUST!', comboResult === 'shatter' ? '#5ee6ff' : '#ff8a5e');
+      if (this.audio) this.audio.explosion();
+    }
+
     e.hp -= remaining;
     e.hurtFlash = 0.12;
     if (knockForce && !e.isBoss) {
       e.knockX += Math.cos(knockAngle) * knockForce;
       e.knockY += Math.sin(knockAngle) * knockForce;
     }
-    switch (damageType) {
-      case 'fire': applyBurn(e, finalAmount * 0.25, 3); break;
-      case 'poison': applyPoison(e, finalAmount * 0.18, 4); break;
-      case 'shock': applyShock(e, 0.35); break;
-      case 'frost': applyFrost(e, 0.2, 2.2); break;
+
+    // Poise: burst damage staggers an enemy briefly (locking out its
+    // behavior) once it's absorbed enough hits without a break; regenerates
+    // on its own otherwise, so it has to be burst down again each time.
+    // Bosses are exempt so stagger can't trivialize a boss fight.
+    if (!e.isBoss && e.staggerTime <= 0) {
+      e.poise -= remaining;
+      if (e.poise <= 0) {
+        e.poise = e.poiseMax;
+        e.staggerTime = 1.0;
+        this.particles.spark(e.x, e.y, 0, '#ffffff', 6);
+        if (this.audio) this.audio.hit();
+      }
     }
-    return finalAmount;
+
+    // Execute: a near-dead enemy dies outright instead of lingering at a
+    // sliver of hp, rewarding finishing what you started over chasing the
+    // next target. Bosses are exempt.
+    if (e.hp > 0 && !e.isBoss && e.hp / e.maxHp < 0.08) {
+      e.hp = 0;
+      this.particles.burst(e.x, e.y, { count: 10, color: '#ffffff', speed: 180, life: 0.3, glow: true });
+    }
+
+    if (isCrit) this.particles.spark(e.x, e.y, knockAngle, '#ffd54a', 3);
+    if (isBackstab) this.particles.spark(e.x, e.y, knockAngle, '#ff5e8a', 3);
+
+    return finalAmount + comboBonus;
   }
 
   queryNearby(x, y, radius, fn) {

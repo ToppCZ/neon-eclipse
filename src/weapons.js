@@ -120,6 +120,9 @@ export const WEAPONS = {
 // Each is implemented by hooking the trigger weapon's own fire method
 // (reusing the other weapon's existing fire logic) rather than a bolted-on
 // timer, so it reads as "these two weapons are actually working together."
+// Seconds a discrete-fire weapon slot takes to auto-charge an empowered shot.
+const WEAPON_CHARGE_TIME = 7;
+
 export const COMBOS = [
   {
     id: 'overloadDischarge', name: 'Overload Discharge',
@@ -250,7 +253,10 @@ export class WeaponSystem {
 
   equip(id) {
     if (this.hasWeapon(id) || this.slots.length >= 6) return false;
-    this.slots.push({ id, level: 1, cooldownTimer: randRange(0, 0.2), evolved: false, orbitAngle: 0, hitCooldowns: new Map(), fireTimer: 0 });
+    this.slots.push({
+      id, level: 1, cooldownTimer: randRange(0, 0.2), evolved: false, orbitAngle: 0, hitCooldowns: new Map(), fireTimer: 0,
+      chargeMeter: 0, charged: false,
+    });
     return true;
   }
 
@@ -305,9 +311,27 @@ export class WeaponSystem {
         continue;
       }
 
+      // Charge: every discrete-fire weapon slowly charges up on its own
+      // (no held input needed, matching the auto-fire theme) and empowers
+      // its next shot once full — a burst option layered on top of steady
+      // DPS, not a replacement for it.
+      if (!slot.charged) {
+        slot.chargeMeter = (slot.chargeMeter || 0) + dt;
+        if (slot.chargeMeter >= WEAPON_CHARGE_TIME) { slot.charged = true; slot.chargeMeter = WEAPON_CHARGE_TIME; }
+      }
+
       slot.cooldownTimer -= dt;
       if (slot.cooldownTimer <= 0) {
         slot.cooldownTimer = stats.cooldown;
+        if (slot.charged) {
+          stats.damage = (stats.damage || 0) * 2.2;
+          if (stats.splash != null) stats.splash *= 1.3;
+          slot.charged = false;
+          slot.chargeMeter = 0;
+          this.particles.burst(player.x, player.y, { count: 16, color: '#ffd54a', speed: 260, life: 0.35, glow: true });
+          this.particles.labelText(player.x, player.y - 34, 'Overcharged!', '#ffd54a');
+          if (this.audio) this.audio.levelUp();
+        }
         this.fire(slot, def, stats, player);
       }
     }

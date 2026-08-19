@@ -3,25 +3,38 @@
 // pooled objects, so this avoids a second bookkeeping layer for what's really
 // just a handful of timers per enemy.
 
+// Each apply function returns a combo name ('combust'/'shatter') when it
+// lands on an enemy already carrying the opposing element, so the caller
+// (EnemyManager.damageEnemy) can trigger a bonus burst — landing burn on a
+// poisoned target (or vice versa) rewards mixing elemental weapons rather
+// than stacking one type.
 export function applyBurn(e, dps, duration) {
+  const combo = e.poisonTime > 0 ? 'combust' : null;
   e.burnTime = Math.max(e.burnTime || 0, duration);
   e.burnDps = Math.max(e.burnDps || 0, dps);
+  return combo;
 }
 
 export function applyPoison(e, dpsPerStack, duration) {
+  const combo = e.burnTime > 0 ? 'combust' : null;
   e.poisonStacks = Math.min(5, (e.poisonStacks || 0) + 1);
   e.poisonTime = Math.max(e.poisonTime || 0, duration);
   e.poisonDpsPerStack = dpsPerStack;
+  return combo;
 }
 
 export function applyShock(e, stunDuration) {
+  const combo = e.frostTime > 0 ? 'shatter' : null;
   e.stunTime = Math.max(e.stunTime || 0, stunDuration);
+  return combo;
 }
 
 export function applyFrost(e, slowPerStack, duration) {
+  const combo = e.stunTime > 0 ? 'shatter' : null;
   e.frostStacks = Math.min(3, (e.frostStacks || 0) + 1);
   e.frostTime = Math.max(e.frostTime || 0, duration);
   e.frostSlowPerStack = slowPerStack;
+  return combo;
 }
 
 export function clearStatuses(e) {

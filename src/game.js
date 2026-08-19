@@ -70,6 +70,10 @@ export class Game {
     this.killStreak = 0;
     this.killStreakTimer = 0;
 
+    // Adrenaline: a brief damage buff granted for dashing near danger.
+    this.adrenalineTimer = 0;
+    this._wasDashing = false;
+
     // Full-screen flash overlay, used for level-up / evolution / combo beats.
     this.flashColor = null;
     this.flashAlpha = 0;
@@ -351,6 +355,10 @@ export class Game {
     this.killCount = 0;
     this.statSamples = [{ t: 0, hpPct: 1 }];
     this._sampleTimer = 2;
+    this.killStreak = 0;
+    this.killStreakTimer = 0;
+    this.adrenalineTimer = 0;
+    this._wasDashing = false;
 
     if (mode === 'endless') {
       this.run = null;
@@ -404,7 +412,7 @@ export class Game {
       ui.flashBossBanner(BOSS_TYPES[bossId].name);
       this.addShake(14, 0.5);
     } else if (wave % 5 === 0) {
-      const elite = this.enemyManager.spawnElite(this.nodeBiome, this.player, WORLD_HALF, this.nodeActNumber);
+      const elite = this.enemyManager.spawnElite(this.nodeBiome, this.player, WORLD_HALF, this.nodeActNumber, this.weaponSystem);
       const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura' };
       ui.flashBossBanner(`Elite Enemy (${affixNames[elite.affix] || elite.affix})`);
     }
@@ -477,7 +485,7 @@ export class Game {
     this.hazards = this.generateHazards(node.biome, this.player.x, this.player.y);
 
     if (node.type === 'elite') {
-      const elite = this.enemyManager.spawnElite(node.biome, this.player, WORLD_HALF, this.nodeActNumber);
+      const elite = this.enemyManager.spawnElite(node.biome, this.player, WORLD_HALF, this.nodeActNumber, this.weaponSystem);
       const affixNames = { explosive: 'Explosive', shielded: 'Shielded', frozenAura: 'Frost Aura', regenerating: 'Regenerating' };
       ui.flashBossBanner(`Elite Enemy (${affixNames[elite.affix] || elite.affix})`);
     } else if (node.type === 'boss') {
@@ -527,14 +535,17 @@ export class Game {
     const p = this.player;
     for (const h of this.hazards) {
       h.tickTimer -= dt;
-      const d = Math.hypot(p.x - h.x, p.y - h.y);
-      if (d <= h.radius) {
-        if (h.tickTimer <= 0) {
-          h.tickTimer = 0.5;
-          const dmg = h.type === 'fire' ? 7 : 5;
-          this.onPlayerHit(dmg, p.x, p.y);
-        }
-      }
+      if (h.tickTimer > 0) continue;
+      h.tickTimer = 0.5;
+      const dmg = h.type === 'fire' ? 7 : 5;
+      if (Math.hypot(p.x - h.x, p.y - h.y) <= h.radius) this.onPlayerHit(dmg, p.x, p.y);
+
+      // Enemies knocked (or wandered) into a hazard zone take damage too —
+      // gives knockback weapons a real tactical payoff beyond crowd control.
+      this.enemyManager.queryNearby(h.x, h.y, h.radius, (e) => {
+        const dealt = this.enemyManager.damageEnemy(e, dmg + 2, angleTo(h.x, h.y, e.x, e.y), 30, h.type === 'fire' ? 'fire' : 'physical');
+        this.particles.damageText(e.x, e.y - 10, dealt);
+      });
     }
   }
 
@@ -862,7 +873,21 @@ export class Game {
     if (input.ultimatePressed && this.player.ultimateCharge >= 1) this.triggerUltimate();
     if (this.player.dashTimeLeft > 0) {
       this.particles.spark(this.player.x, this.player.y, this.player.dashAngle + Math.PI, this.player.char.color, 2);
+      // A dash sweeps through and turns back any enemy shots caught in it —
+      // a skill-based counter to ranged telegraphs, not just avoidance.
+      this.enemyManager.deflectShotsNear(this.player.x, this.player.y, this.player.radius + 46);
     }
+    // Adrenaline: dashing near danger (an enemy close enough to have hit you)
+    // grants a brief post-dash damage window, making the dash an offensive
+    // tool worth timing, not just a defensive panic button.
+    if (this._wasDashing && this.player.dashTimeLeft <= 0) {
+      if (this.enemyManager.nearest(this.player.x, this.player.y, 140)) {
+        this.adrenalineTimer = 1.2;
+        this.particles.labelText(this.player.x, this.player.y - 30, 'Adrenaline!', '#ff5e8a');
+      }
+    }
+    this._wasDashing = this.player.dashTimeLeft > 0;
+    if (this.adrenalineTimer > 0) this.adrenalineTimer -= dt;
     this.updateHazards(dt);
 
     // Kill-streak momentum: decays if no kill lands within the window, and
@@ -877,8 +902,9 @@ export class Game {
     const spawningEnabled = this.nodeType === 'combat' || this.nodeType === 'endless' || this.nodeType === 'extract';
     this.enemyManager.update(dt, this.nodeElapsed, this.player, WORLD_HALF, this.nodeBiome, this.nodeActNumber, spawningEnabled);
 
+    const adrenalineMult = this.adrenalineTimer > 0 ? 1.25 : 1;
     const baseMight = this.player.might;
-    this.player.might = baseMight * streakMult;
+    this.player.might = baseMight * streakMult * adrenalineMult;
     this.weaponSystem.update(dt, this.player);
     this.player.might = baseMight;
 
