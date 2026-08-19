@@ -42,6 +42,16 @@ export const PASSIVES = {
     desc: '+7% move speed (+mastery at 5)',
     apply(player, level) { player.speed *= 1 + 0.07 * level + (level >= 5 ? 0.1 : 0); },
   },
+  thorns: {
+    id: 'thorns', name: 'Thorns', maxLevel: 5, icon: 'thorns',
+    desc: '+3 reflect damage on contact (+mastery at 5)',
+    apply(player, level) { player.thorns += 3 * level + (level >= 5 ? 5 : 0); },
+  },
+  regen: {
+    id: 'regen', name: 'Second Wind', maxLevel: 5, icon: 'regen',
+    desc: '+0.3 HP/s regen (+mastery at 5)',
+    apply(player, level) { player.regen += 0.3 * level + (level >= 5 ? 0.3 : 0); },
+  },
 };
 
 export const TIER_COLORS = { common: '#9aa4c9', rare: '#5ee6ff', legendary: '#ffd54a' };

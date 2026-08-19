@@ -41,8 +41,10 @@
         <button id="btn-play" class="btn btn-primary">Start Run</button>
         <button id="btn-endless" class="btn">Endless Mode</button>
         <button id="btn-shop" class="btn">Upgrades</button>
+        <button id="btn-settings" class="btn">Settings</button>
       </div>
       <div class="menu-stats" id="menu-stats"></div>
+      <div class="history-list" id="menu-history"></div>
       <p class="controls-hint">Move: WASD / Arrow Keys &nbsp;·&nbsp; Space/Shift to dash &nbsp;·&nbsp; Weapons fire automatically &nbsp;·&nbsp; Esc to pause</p>
     </div>
   </div>
@@ -93,12 +95,22 @@
     </div>
   </div>
 
+  <!-- ===== Settings ===== -->
+  <div id="screen-settings" class="screen hidden">
+    <div class="menu-card wide">
+      <h2>Settings</h2>
+      <div id="settings-list" class="settings-list"></div>
+      <button id="btn-back-settings" class="btn btn-ghost">Back</button>
+    </div>
+  </div>
+
   <!-- ===== Pause ===== -->
   <div id="screen-pause" class="screen hidden">
     <div class="menu-card">
       <h2>Paused</h2>
       <div class="menu-buttons">
         <button id="btn-resume" class="btn btn-primary">Resume</button>
+        <button id="btn-pause-settings" class="btn">Settings</button>
         <button id="btn-quit" class="btn btn-ghost">Quit to Menu</button>
       </div>
     </div>

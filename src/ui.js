@@ -22,6 +22,8 @@ const ICONS = {
   fortress: { glyph: '▣', color: '#ff8a5e' },
   berserker: { glyph: '⚔', color: '#ffd54a' },
   vampire: { glyph: '♥', color: '#7CFC9A' },
+  thorns: { glyph: '✦', color: '#ff8a5e' },
+  regen: { glyph: '+', color: '#7CFC9A' },
 };
 
 const NODE_ICONS = {
@@ -43,32 +45,37 @@ class UI {
       'hud', 'hp-bar', 'hp-label', 'xp-bar', 'timer', 'gold-val', 'level-badge', 'weapon-tray',
       'run-progress',
       'boss-banner', 'kill-counter',
-      'screen-menu', 'btn-play', 'btn-endless', 'btn-shop', 'menu-stats',
+      'screen-menu', 'btn-play', 'btn-endless', 'btn-shop', 'btn-settings', 'menu-stats', 'menu-history',
       'screen-characters', 'character-list', 'btn-back-chars',
       'screen-shop', 'shop-list', 'shop-gold', 'btn-back-shop',
       'screen-choice', 'choice-title', 'choice-list',
       'screen-map', 'map-header', 'map-choices',
       'screen-node-shop', 'node-shop-cores', 'node-shop-list', 'btn-node-shop-reroll', 'node-shop-reroll-cost', 'btn-node-shop-continue',
-      'screen-pause', 'btn-resume', 'btn-quit',
+      'screen-settings', 'settings-list', 'btn-back-settings',
+      'screen-pause', 'btn-resume', 'btn-pause-settings', 'btn-quit',
       'screen-end', 'end-title', 'end-stats', 'btn-retry', 'btn-end-menu',
       'mute-btn',
     ].forEach((id) => { this.el[camel(id)] = document.getElementById(id); });
 
     this.screens = [
       'screen-menu', 'screen-characters', 'screen-shop', 'screen-choice',
-      'screen-map', 'screen-node-shop', 'screen-pause', 'screen-end',
+      'screen-map', 'screen-node-shop', 'screen-settings', 'screen-pause', 'screen-end',
     ].map(id => document.getElementById(id));
   }
 
   hideAllScreens() { this.screens.forEach(s => s.classList.add('hidden')); }
   show(id) { document.getElementById(id).classList.remove('hidden'); }
 
-  setHudVisible(visible) { this.el.hud.classList.toggle('hidden', !visible); }
+  setHudVisible(visible) {
+    this.el.hud.classList.toggle('hidden', !visible);
+    if (!visible) document.body.classList.remove('low-hp');
+  }
 
   updateHud(player, elapsed, weaponSystem, killCount, runLabel) {
     const hpPct = clamp(player.hp / player.maxHp, 0, 1);
     this.el.hpBar.style.transform = `scaleX(${hpPct})`;
     this.el.hpLabel.textContent = `${Math.ceil(player.hp)} / ${Math.round(player.maxHp)}`;
+    document.body.classList.toggle('low-hp', hpPct > 0 && hpPct < 0.25);
     const xpPct = clamp(player.xp / player.xpToNext, 0, 1);
     this.el.xpBar.style.transform = `scaleX(${xpPct})`;
     this.el.timer.textContent = formatTime(elapsed);
@@ -116,6 +123,17 @@ class UI {
       <div><b>${meta.stats.bestLevel}</b>Best Level</div>
       <div><b>${meta.gold}</b>Gold</div>
     `;
+    this.renderHistory(meta.history || []);
+  }
+
+  renderHistory(history) {
+    if (!this.el.menuHistory) return;
+    if (!history.length) { this.el.menuHistory.innerHTML = ''; return; }
+    this.el.menuHistory.innerHTML = history.map((h) => {
+      const modeLabel = h.mode === 'endless' ? 'Endless' : 'Story';
+      const reach = h.mode === 'endless' ? `Wave ${h.wave}` : `Act ${h.actReached}${h.victory ? ' · Win' : ''}`;
+      return `<div class="history-row"><span class="history-mode">${modeLabel}</span><span>${reach}</span><span>Lv ${h.level}</span><span class="history-gold">◈ ${h.goldEarned}</span></div>`;
+    }).join('');
   }
 
   showCharacterSelect(characters, onPick) {
@@ -236,6 +254,61 @@ class UI {
     this.el.btnNodeShopReroll.disabled = state.player.cores < state.rerollCost;
     this.el.btnNodeShopReroll.onclick = onReroll;
     this.el.btnNodeShopContinue.onclick = onContinue;
+  }
+
+  showSettings(settings, onChange) {
+    this.hideAllScreens();
+    this.show('screen-settings');
+    this.renderSettings(settings, onChange);
+  }
+
+  renderSettings(settings, onChange) {
+    const el = this.el.settingsList;
+    el.innerHTML = '';
+    el.appendChild(this._settingsRow('Music Volume', this._slider(Math.round(settings.musicVolume * 100), (v) => onChange('musicVolume', v / 100))));
+    el.appendChild(this._settingsRow('SFX Volume', this._slider(Math.round(settings.sfxVolume * 100), (v) => onChange('sfxVolume', v / 100))));
+    el.appendChild(this._settingsRow('Screen Shake', this._toggleGroup(
+      [[0, 'Off'], [0.5, 'Reduced'], [1, 'Full']], settings.screenShake,
+      (v) => { onChange('screenShake', v); this.renderSettings(settings, onChange); })));
+    el.appendChild(this._settingsRow('Reduced Motion', this._toggleGroup(
+      [[false, 'Off'], [true, 'On']], settings.reducedMotion,
+      (v) => { onChange('reducedMotion', v); this.renderSettings(settings, onChange); })));
+    el.appendChild(this._settingsRow('Show Hitbox', this._toggleGroup(
+      [[false, 'Off'], [true, 'On']], settings.showHitbox,
+      (v) => { onChange('showHitbox', v); this.renderSettings(settings, onChange); })));
+    el.appendChild(this._settingsRow('Difficulty', this._toggleGroup(
+      [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']], settings.difficulty,
+      (v) => { onChange('difficulty', v); this.renderSettings(settings, onChange); })));
+  }
+
+  _settingsRow(labelText, controlEl) {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    row.appendChild(label);
+    row.appendChild(controlEl);
+    return row;
+  }
+
+  _slider(value, onInput) {
+    const input = document.createElement('input');
+    input.type = 'range'; input.min = '0'; input.max = '100'; input.value = String(value);
+    input.addEventListener('input', () => onInput(Number(input.value)));
+    return input;
+  }
+
+  _toggleGroup(options, current, onPick) {
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-toggle-group';
+    for (const [val, label] of options) {
+      const btn = document.createElement('button');
+      btn.className = 'btn toggle-opt' + (String(current) === String(val) ? ' active' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', () => onPick(val));
+      wrap.appendChild(btn);
+    }
+    return wrap;
   }
 
   showPause() { this.hideAllScreens(); this.show('screen-pause'); }

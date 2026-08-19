@@ -41,7 +41,13 @@ html, body {
   pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%);
   z-index: 5;
+  transition: background 0.3s ease;
 }
+body.low-hp #vignette {
+  background: radial-gradient(ellipse at center, transparent 32%, rgba(180,10,40,0.6) 100%);
+  animation: lowHpPulse 1s ease-in-out infinite;
+}
+@keyframes lowHpPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.75; } }
 
 .hidden { display: none !important; }
 
@@ -340,6 +346,26 @@ h2 { margin: 0 0 20px; font-size: 22px; letter-spacing: 0.5px; }
 @media (max-width: 560px) {
   .node-list { grid-template-columns: 1fr; }
 }
+
+/* ---------- Settings ---------- */
+.settings-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
+.settings-row label { font-size: 13px; color: var(--text-dim); font-weight: 600; flex-shrink: 0; }
+.settings-row input[type="range"] { width: 160px; accent-color: var(--cyan); }
+.settings-toggle-group { display: flex; gap: 6px; }
+.settings-toggle-group .btn { padding: 7px 12px; font-size: 12px; }
+.settings-toggle-group .btn.active { background: linear-gradient(90deg, var(--cyan), var(--purple)); color: #060714; border-color: transparent; }
+
+/* ---------- Run history (main menu) ---------- */
+.history-list { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 0; max-height: 130px; overflow-y: auto; }
+.history-row {
+  display: grid; grid-template-columns: 1fr 1fr 0.6fr 0.7fr;
+  gap: 8px; font-size: 11px; color: var(--text-dim);
+  border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 6px 10px;
+}
+.history-mode { color: var(--text); font-weight: 700; }
+.history-gold { color: var(--gold); text-align: right; }
 
 /* ---------- End screen ---------- */
 .end-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 20px; }

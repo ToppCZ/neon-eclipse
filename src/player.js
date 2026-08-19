@@ -98,6 +98,7 @@ export class Player {
     this.xpGainMult = 1;
     this.projSpeedMult = 1;
     this.projCountBonus = 0;
+    this.thorns = 0;
 
     this.level = 1;
     this.xp = 0;
@@ -151,6 +152,7 @@ export class Player {
     this.xpGainMult = 1;
     this.projSpeedMult = 1;
     this.projCountBonus = 0;
+    this.thorns = 0;
 
     for (const [id, level] of this.passives) {
       const def = passiveDefs[id];

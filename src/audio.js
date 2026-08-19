@@ -10,6 +10,8 @@ class AudioEngine {
     this.enabled = true;
     this.musicNodes = [];
     this.musicTimer = null;
+    this.musicVolume = 0.35; // settings-controlled base level, applied even before ensure()
+    this.sfxVolume = 0.8;
   }
 
   ensure() {
@@ -21,11 +23,11 @@ class AudioEngine {
     this.master.connect(this.ctx.destination);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.8;
+    this.sfxGain.gain.value = this.sfxVolume;
     this.sfxGain.connect(this.master);
 
     this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = 0.35;
+    this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.master);
   }
 
@@ -37,6 +39,16 @@ class AudioEngine {
   setMuted(muted) {
     this.ensure();
     this.master.gain.value = muted ? 0 : 0.9;
+  }
+
+  setMusicVolume(v) {
+    this.musicVolume = v;
+    if (this.musicGain) this.musicGain.gain.value = v;
+  }
+
+  setSfxVolume(v) {
+    this.sfxVolume = v;
+    if (this.sfxGain) this.sfxGain.gain.value = v;
   }
 
   now() { return this.ctx.currentTime; }

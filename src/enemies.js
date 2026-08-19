@@ -57,6 +57,7 @@ export class EnemyManager {
     this.activeElite = null;
     this.onDeath = null; // (enemy) => void
     this.onPlayerHit = null; // (amount, x, y) => void
+    this.diff = { hp: 1, dmg: 1, spawn: 1 }; // difficulty-setting multipliers, set by Game per run
   }
 
   reset() {
@@ -76,10 +77,10 @@ export class EnemyManager {
     const actSpeed = 1 + (actNumber - 1) * 0.12;
     const actSpawn = 1 + (actNumber - 1) * 0.3;
     return {
-      hp: (1 + t * 0.35) * actHp,
-      dmg: (1 + t * 0.12) * actDmg,
+      hp: (1 + t * 0.35) * actHp * this.diff.hp,
+      dmg: (1 + t * 0.12) * actDmg * this.diff.dmg,
       speed: (1 + Math.min(0.25, t * 0.06)) * actSpeed,
-      spawnRate: (1 + t * 0.4) * actSpawn,
+      spawnRate: (1 + t * 0.4) * actSpawn * this.diff.spawn,
     };
   }
 
@@ -172,6 +173,9 @@ export class EnemyManager {
       if (e.hitCooldown <= 0 && dist2(e.x, e.y, player.x, player.y) <= r * r) {
         e.hitCooldown = 0.55;
         if (this.onPlayerHit) this.onPlayerHit(e.damage, player.x, player.y);
+        if (player.thorns > 0) {
+          this.damageEnemy(e, player.thorns, angleTo(player.x, player.y, e.x, e.y), 90, 'physical');
+        }
       }
 
       if (e.hp <= 0) {

@@ -16,9 +16,11 @@ export class ParticleSystem {
     });
     this.floaters = new Pool(() => ({ x: 0, y: 0, vy: 0, life: 0, maxLife: 1, text: '', color: '#fff' }),
       (f, opts) => Object.assign(f, { x: opts.x, y: opts.y, vy: -30, life: opts.life ?? 0.8, maxLife: opts.life ?? 0.8, text: opts.text, color: opts.color ?? '#fff' }));
+    this.reduced = false; // settings-controlled: halves particle counts for performance/motion sensitivity
   }
 
   burst(x, y, { count = 10, color = '#fff', speed = 120, life = 0.5, size = 3, glow = false } = {}) {
+    if (this.reduced) count = Math.max(1, Math.ceil(count / 2));
     for (let i = 0; i < count; i++) {
       const a = (i / count) * TAU + randRange(-0.3, 0.3);
       const s = speed * randRange(0.4, 1);
@@ -30,6 +32,7 @@ export class ParticleSystem {
   }
 
   spark(x, y, angle, color = '#9ef', count = 4) {
+    if (this.reduced) count = Math.max(1, Math.ceil(count / 2));
     for (let i = 0; i < count; i++) {
       const a = angle + randRange(-0.5, 0.5);
       const s = randRange(80, 220);

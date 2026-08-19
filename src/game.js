@@ -8,6 +8,8 @@ import { ParticleSystem } from './particles.js';
 import { BOSS_TYPES, BIOMES } from './enemyData.js';
 import { generateRun, currentAct, isLastAct } from './runMap.js';
 import { loadMeta, getMetaBonuses, purchaseUpgrade, recordRunResult } from './meta.js';
+import { loadSettings, saveSettings, diffMultipliers } from './settings.js';
+import { statusGlowColor } from './statusEffects.js';
 import { audio } from './audio.js';
 import { ui } from './ui.js';
 
@@ -26,6 +28,12 @@ export class Game {
     this.pickups = new PickupManager(this.particles, audio);
 
     this.meta = loadMeta();
+    this.settings = loadSettings();
+    audio.setMusicVolume(this.settings.musicVolume);
+    audio.setSfxVolume(this.settings.sfxVolume);
+    this.particles.reduced = this.settings.reducedMotion;
+    this.enemyManager.diff = diffMultipliers(this.settings.difficulty);
+    this._settingsReturnTo = 'menu';
     this.player = null;
     this.state = 'menu';
     this.mode = 'story'; // 'story' | 'endless'
@@ -56,7 +64,21 @@ export class Game {
 
   resize(w, h) { this.width = w; this.height = h; }
 
-  addShake(mag, time) { this.shakeMag = Math.max(this.shakeMag, mag); this.shakeTime = Math.max(this.shakeTime, time); }
+  addShake(mag, time) {
+    const scale = this.settings.screenShake;
+    if (scale <= 0) return;
+    this.shakeMag = Math.max(this.shakeMag, mag * scale);
+    this.shakeTime = Math.max(this.shakeTime, time);
+  }
+
+  onSettingChange(key, value) {
+    this.settings[key] = value;
+    saveSettings(this.settings);
+    if (key === 'musicVolume') audio.setMusicVolume(value);
+    else if (key === 'sfxVolume') audio.setSfxVolume(value);
+    else if (key === 'reducedMotion') this.particles.reduced = value;
+    else if (key === 'difficulty') this.enemyManager.diff = diffMultipliers(value);
+  }
 
   // ---------------- Menu wiring ----------------
   bindMenus() {
@@ -73,6 +95,14 @@ export class Game {
     ui.el.btnResume.addEventListener('click', () => { audio.uiClick(); this.resume(); });
     ui.el.btnQuit.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.btnRetry.addEventListener('click', () => goToCharacterSelect(this.mode));
+
+    ui.el.btnSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'menu'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
+    ui.el.btnPauseSettings.addEventListener('click', () => { audio.uiClick(); this._settingsReturnTo = 'pause'; ui.showSettings(this.settings, (k, v) => this.onSettingChange(k, v)); });
+    ui.el.btnBackSettings.addEventListener('click', () => {
+      audio.uiClick();
+      if (this._settingsReturnTo === 'pause') { this.state = 'paused'; ui.showPause(); }
+      else this.goToMenu();
+    });
     ui.el.btnEndMenu.addEventListener('click', () => { audio.uiClick(); this.goToMenu(); });
     ui.el.muteBtn.addEventListener('click', () => {
       this.muted = !this.muted;
@@ -406,14 +436,14 @@ export class Game {
     if (this.mode === 'endless') {
       const wave = this.endless.wave;
       const goldEarned = Math.floor(this.player.cores * 0.5 + wave * 18);
-      stats = { mode: 'endless', time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned };
+      stats = { mode: 'endless', victory, time: this.elapsed, level: this.player.level, kills: this.killCount, wave, goldEarned };
     } else {
       const actReached = this.run.actIndex + 1;
       const goldEarned = Math.floor(
         this.player.cores * 0.5 + this.run.nodesCleared * 12 + this.run.actIndex * 60 + (victory ? 150 : 0)
       );
       stats = {
-        mode: 'story', time: this.elapsed, level: this.player.level, kills: this.killCount,
+        mode: 'story', victory, time: this.elapsed, level: this.player.level, kills: this.killCount,
         actReached, nodesCleared: this.run.nodesCleared, goldEarned,
       };
     }
@@ -431,7 +461,8 @@ export class Game {
       const value = e.isBoss ? randRange(30, 60) : (e.isElite ? randRange(15, 28) : randRange(1, 4));
       this.pickups.spawnCores(e.x, e.y, value);
     }
-    this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: e.color, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
+    const deathColor = statusGlowColor(e) || e.color;
+    this.particles.burst(e.x, e.y, { count: e.isBoss ? 40 : (e.isElite ? 24 : 10), color: deathColor, speed: e.isBoss ? 260 : 140, life: 0.5, glow: true });
     if (audio) audio.enemyDeath();
     if (e.isBoss) this.addShake(16, 0.6);
 
@@ -555,6 +586,11 @@ export class Game {
     }
 
     ctx.restore();
+
+    if (this.player && (this.state === 'playing' || this.state === 'paused' || this.state === 'levelup' || this.state === 'nodeShop')) {
+      this.drawMinimap(ctx);
+      if (this.enemyManager.activeBoss) this.drawBossBar(ctx, this.enemyManager.activeBoss);
+    }
   }
 
   drawBackground(ctx, camX, camY) {
@@ -638,6 +674,68 @@ export class Game {
     ctx.beginPath();
     ctx.ellipse(sx, sy + 4, 16, 7, 0, 0, TAU);
     ctx.fill();
+    ctx.restore();
+
+    if (this.settings.showHitbox) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, p.radius, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ---------------- Screen-space HUD overlays (drawn after the world's camera transform is undone) ----------------
+  drawMinimap(ctx) {
+    if (!this.player) return;
+    const size = 100, pad = 16, cx = this.width - size / 2 - pad, cy = size / 2 + pad + 30;
+    const range = 900;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, size / 2, 0, TAU);
+    ctx.fillStyle = 'rgba(10, 12, 30, 0.65)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(94, 230, 255, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.clip();
+    for (const e of this.enemyManager.pool.active) {
+      const dx = ((e.x - this.player.x) / range) * (size / 2);
+      const dy = ((e.y - this.player.y) / range) * (size / 2);
+      if (Math.hypot(dx, dy) > size / 2) continue;
+      ctx.fillStyle = e.isBoss ? '#ff5e8a' : (e.isElite ? '#ffd54a' : e.color);
+      ctx.beginPath();
+      ctx.arc(cx + dx, cy + dy, e.isBoss ? 4 : (e.isElite ? 3 : 1.6), 0, TAU);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawBossBar(ctx, boss) {
+    const w = Math.min(420, this.width * 0.6), h = 14, x = this.width / 2 - w / 2, y = 74;
+    const pct = clamp(boss.hp / boss.maxHp, 0, 1);
+    ctx.save();
+    ctx.fillStyle = 'rgba(10, 12, 30, 0.8)';
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = 'rgba(255, 94, 138, 0.25)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#ff5e8a';
+    ctx.fillRect(x, y, w * pct, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 12px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    const name = (BOSS_TYPES[boss.bossId] && BOSS_TYPES[boss.bossId].name) || 'Boss';
+    ctx.fillText(name, this.width / 2, y - 6);
     ctx.restore();
   }
 }

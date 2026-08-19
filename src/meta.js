@@ -9,11 +9,14 @@ export const META_UPGRADES = {
   magnet: { id: 'magnet', name: 'Attractor Coil', desc: '+8% pickup radius', stat: 'magnet', perLevel: 0.08, maxLevel: 8, baseCost: 30, costGrowth: 1.25 },
 };
 
+const MAX_HISTORY = 5;
+
 function defaultMeta() {
   return {
     gold: 0,
     levels: { hp: 0, might: 0, speed: 0, armor: 0, luck: 0, magnet: 0 },
     stats: { totalRuns: 0, bestTime: 0, bestLevel: 0, bestAct: 0, bestWave: 0, totalKills: 0, totalNodesCleared: 0 },
+    history: [], // last few runs, newest first — quick "what happened last time" glance on the menu
   };
 }
 
@@ -27,6 +30,7 @@ export function loadMeta() {
       gold: parsed.gold ?? base.gold,
       levels: { ...base.levels, ...(parsed.levels || {}) },
       stats: { ...base.stats, ...(parsed.stats || {}) },
+      history: Array.isArray(parsed.history) ? parsed.history.slice(0, MAX_HISTORY) : base.history,
     };
   } catch {
     return defaultMeta();
@@ -64,7 +68,8 @@ export function getMetaBonuses(meta) {
   return bonuses;
 }
 
-export function recordRunResult(meta, { time, level, kills, actReached, nodesCleared, goldEarned, wave }) {
+export function recordRunResult(meta, stats) {
+  const { time, level, kills, actReached, nodesCleared, goldEarned, wave, mode, victory } = stats;
   meta.gold += goldEarned;
   meta.stats.totalRuns += 1;
   meta.stats.bestTime = Math.max(meta.stats.bestTime, time);
@@ -73,5 +78,8 @@ export function recordRunResult(meta, { time, level, kills, actReached, nodesCle
   meta.stats.bestWave = Math.max(meta.stats.bestWave || 0, wave || 0);
   meta.stats.totalKills += kills;
   meta.stats.totalNodesCleared += nodesCleared || 0;
+  meta.history = meta.history || [];
+  meta.history.unshift({ mode, victory: !!victory, wave, actReached, level, kills, time, goldEarned });
+  meta.history = meta.history.slice(0, MAX_HISTORY);
   saveMeta(meta);
 }
