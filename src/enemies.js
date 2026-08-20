@@ -532,25 +532,11 @@ export class EnemyManager {
       ctx.shadowColor = statusGlow || e.glow;
       ctx.shadowBlur = e.isBoss ? 22 : (e.isElite ? 18 : (statusGlow ? 14 : 10));
       ctx.fillStyle = e.hurtFlash > 0 ? '#ffffff' : shadeFill(ctx, e.radius, e.color);
+      // Rim-light + texture grain are now added per-type by finishBody(),
+      // called right after each type's own main-body fill (see below) so
+      // they clip to the exact silhouette instead of a bounding circle.
       drawEnemyBody(ctx, e);
 
-      // Surface grain pass: a real generated texture tile (not a gradient),
-      // clipped to roughly the body's silhouette so it reads as material
-      // detail on the creature rather than flat color. Armored types get a
-      // brushed-metal hatch, everything else gets a mottled organic scale.
-      if (e.hurtFlash <= 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(0, 0, e.radius * 1.02, 0, TAU);
-        ctx.clip();
-        ctx.globalAlpha = 0.3;
-        ctx.globalCompositeOperation = 'overlay';
-        const armoredId = e.isBoss ? e.bossId : (e.type && e.type.id);
-        const isArmored = armoredId === 'brute' || armoredId === 'warden' || armoredId === 'eclipse';
-        ctx.fillStyle = texturePattern(ctx, e.color, isArmored ? 'hull' : 'organic');
-        ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
-        ctx.restore();
-      }
       if (statusGlow) {
         ctx.strokeStyle = statusGlow;
         ctx.lineWidth = 2;
@@ -639,6 +625,30 @@ function easeOutCubic(t) {
   return 1 - Math.pow(1 - c, 3);
 }
 
+// Called immediately after a type's main-body ctx.fill(), while that exact
+// path is still current (fill/stroke/clip don't clear the path — only a new
+// beginPath() does). Adds a rim-light stroke and a texture-pattern grain
+// pass clipped to that exact silhouette, instead of the bounding-circle
+// approximation a post-hoc pass would need.
+function finishBody(ctx, e, textureKind) {
+  if (e.hurtFlash > 0) return; // keep the white hit-flash frame pure
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = e.glow;
+  ctx.lineWidth = 0.75;
+  ctx.shadowBlur = 0;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.clip();
+  ctx.globalAlpha = 0.3;
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.fillStyle = texturePattern(ctx, e.color, textureKind);
+  ctx.fillRect(-e.radius * 1.4, -e.radius * 1.4, e.radius * 2.8, e.radius * 2.8);
+  ctx.restore();
+}
+
 // Bio-mechanical swarm creatures, not abstract polygons: legs that scuttle,
 // wings that flutter, a maw that visibly opens as it charges a shot. Each
 // function owns its full draw (legs/accents behind, body filled on top)
@@ -659,6 +669,7 @@ function drawEnemyBody(ctx, e) {
       ctx.beginPath();
       drawSpikyBlob(ctx, e.radius, e.isBoss ? 10 : (e.isElite ? 7 : 5), e.t);
       ctx.fill();
+      finishBody(ctx, e, 'organic');
     }
   }
 }
@@ -670,6 +681,7 @@ function drawCrawler(ctx, e) {
   ctx.beginPath();
   drawSpikyBlob(ctx, e.radius, 5, e.t);
   ctx.fill();
+  finishBody(ctx, e, 'organic');
   drawEyeCore(ctx, e.radius);
 }
 
@@ -685,6 +697,7 @@ function drawSprinter(ctx, e) {
   ctx.lineTo(-e.radius * 0.7, -e.radius * 0.75);
   ctx.closePath();
   ctx.fill();
+  finishBody(ctx, e, 'organic');
 }
 
 // Tiny flying nanobot: fluttering wing pair around a small glowing body —
@@ -694,6 +707,7 @@ function drawSwarmling(ctx, e) {
   ctx.beginPath();
   ctx.arc(0, 0, e.radius * 0.7, 0, TAU);
   ctx.fill();
+  finishBody(ctx, e, 'organic');
   drawEyeCore(ctx, e.radius * 0.55);
 }
 
@@ -703,6 +717,7 @@ function drawSpitter(ctx, e) {
   ctx.beginPath();
   ctx.arc(0, 0, e.radius, 0, TAU);
   ctx.fill();
+  finishBody(ctx, e, 'organic');
   drawIris(ctx, e.radius, e._chargePulse || 0);
 }
 
@@ -713,6 +728,7 @@ function drawBrute(ctx, e) {
   ctx.beginPath();
   drawNotchedPolygon(ctx, e.radius, 8, 0.8);
   ctx.fill();
+  finishBody(ctx, e, 'hull');
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 2;
@@ -740,6 +756,7 @@ function drawWardenBoss(ctx, e) {
   ctx.beginPath();
   drawNotchedPolygon(ctx, e.radius * (e.slamming > 0 ? 1.1 : 1), 8, 0.82);
   ctx.fill();
+  finishBody(ctx, e, 'hull');
 }
 
 // The Swarm Mother: a queen insect with a bulbous egg-sac abdomen that
@@ -756,6 +773,7 @@ function drawSwarmMotherBoss(ctx, e) {
   ctx.beginPath();
   drawRippleRing(ctx, e.radius * 0.72, e.t, e.pulsing > 0);
   ctx.fill();
+  finishBody(ctx, e, 'organic');
   drawEyeCore(ctx, e.radius * 0.4);
 }
 
@@ -785,6 +803,7 @@ function drawEclipseBoss(ctx, e) {
   ctx.arc(0, 0, e.radius, 0, TAU);
   ctx.fill();
   ctx.restore();
+  if (!eclipsing) finishBody(ctx, e, 'hull');
 }
 
 // Shared building blocks -----------------------------------------------
