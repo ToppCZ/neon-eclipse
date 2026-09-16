@@ -14,6 +14,11 @@ const SPEAKERS = {
   vale: { label: 'Vale', cls: 'other' },
   sable: { label: 'Sable — dispatch', cls: 'other' },
   maddox: { label: 'Maddox', cls: 'other' },
+  rook: { label: 'Reyes — Operator Four', cls: 'other' },
+  ammi: { label: 'Sarran — Operator Three', cls: 'other' },
+  ferrant: { label: 'Ferrant', cls: 'other' },
+  watcher: { label: 'Halo', cls: 'other' },
+  bell: { label: '', cls: 'sys' },
   other: { label: 'Archive', cls: 'other' },
   sys: { label: '', cls: 'sys' },
   alert: { label: '', cls: 'sys alert' },
@@ -24,7 +29,7 @@ export function speakerOf(who) {
   return SPEAKERS[who] || SPEAKERS.other;
 }
 
-const TYPING_SPEAKERS = new Set(['wren', 'ilsa', 'vale', 'sable', 'maddox', 'other']);
+const TYPING_SPEAKERS = new Set(['wren', 'ilsa', 'vale', 'sable', 'maddox', 'rook', 'ammi', 'ferrant', 'watcher', 'other']);
 
 export class Engine {
   constructor(ui, radio, profile) {

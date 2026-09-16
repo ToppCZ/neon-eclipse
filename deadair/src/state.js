@@ -5,17 +5,30 @@
 const SAVE_KEY = 'deadair.save.v1';
 const PROFILE_KEY = 'deadair.profile.v1';
 
-// The night runs 23:50 -> 04:50. 300 minutes, and you will not get all of it.
-export const WINDOW_START = 300;
-export const CLOCK_START_MIN = 23 * 60 + 50;
+// Each act runs its own clock. Act I is the night the job goes wrong; Act II is
+// the day you spend being hunted for it; Act III is the night you answer it.
+export const WINDOWS = {
+  act1: { total: 420, start: 22 * 60 + 30, label: 'to grid-up' },
+  act2: { total: 600, start: 6 * 60 + 10, label: 'of daylight' },
+  act3: { total: 420, start: 21 * 60 + 40, label: 'to grid-up' },
+  // Act II runs in two phases: the daylight you are hunted in, and the dusk
+  // you get to prepare in. Same act, separate clocks.
+  dusk: { total: 480, start: 15 * 60, label: 'to the bell' },
+};
+
+export const WINDOW_START = WINDOWS.act1.total;
+export const CLOCK_START_MIN = WINDOWS.act1.start;
 
 export function newState() {
   return {
     node: null,
     chapter: 1,
-    time: WINDOW_START,
+    act: 1,
+    window: { ...WINDOWS.act1 },
+    time: WINDOWS.act1.total,
     trust: 50,
     composure: 70,
+    exposure: 0,   // how much Halo has on you. Act I barely moves it; later it is the whole game.
     leads: [],
     flags: {},
     counts: {},   // named tallies the story can gate on (e.g. desk actions taken)
@@ -33,21 +46,23 @@ export function clamp(v, lo, hi) {
 
 // ---- Clock -----------------------------------------------------------------
 
-// Minutes remaining -> the in-fiction wall clock Wren is running against.
-export function clockString(timeLeft) {
-  const elapsed = WINDOW_START - timeLeft;
-  const mins = (CLOCK_START_MIN + elapsed) % (24 * 60);
+// Minutes remaining -> the in-fiction wall clock the act is running against.
+export function clockString(timeLeft, win) {
+  const w = win || WINDOWS.act1;
+  const elapsed = w.total - timeLeft;
+  const mins = (w.start + elapsed) % (24 * 60);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-export function remainingString(timeLeft) {
+export function remainingString(timeLeft, win) {
+  const label = (win || WINDOWS.act1).label;
   const t = Math.max(0, timeLeft);
   const h = Math.floor(t / 60);
   const m = t % 60;
-  if (h <= 0) return `${m}m to grid-up`;
-  return `${h}h ${String(m).padStart(2, '0')}m to grid-up`;
+  if (h <= 0) return `${m}m ${label}`;
+  return `${h}h ${String(m).padStart(2, '0')}m ${label}`;
 }
 
 // ---- Leads & flags ---------------------------------------------------------
@@ -81,6 +96,23 @@ export function applyEffects(state, fx) {
   if (fx.time) state.time = Math.max(0, state.time + fx.time);
   if (fx.trust) state.trust = clamp(state.trust + fx.trust, 0, 100);
   if (fx.composure) state.composure = clamp(state.composure + fx.composure, 0, 100);
+  if (fx.exposure) state.exposure = clamp(state.exposure + fx.exposure, 0, 100);
+
+  // A named phase can reset the clock without starting a new act.
+  if (fx.setWindow && WINDOWS[fx.setWindow]) {
+    state.window = { ...WINDOWS[fx.setWindow] };
+    state.time = WINDOWS[fx.setWindow].total;
+  }
+
+  // Starting an act resets the clock rather than continuing the old one.
+  if (fx.openAct) {
+    const w = WINDOWS['act' + fx.openAct];
+    if (w) {
+      state.act = fx.openAct;
+      state.window = { ...w };
+      state.time = w.total;
+    }
+  }
 
   if (fx.leads) {
     for (const id of fx.leads) {
@@ -120,6 +152,13 @@ export function meets(state, req) {
   if (req.anyLead && !req.anyLead.some((id) => hasLead(state, id))) return false;
   if (req.notLeads && req.notLeads.some((id) => hasLead(state, id))) return false;
 
+  // anyFlags passes if ANY listed flag matches, for content that several
+  // different bits of earlier work can unlock.
+  if (req.anyFlags) {
+    const hit = Object.entries(req.anyFlags).some(([k, v]) =>
+      (typeof v === 'boolean' ? !!state.flags[k] === v : state.flags[k] === v));
+    if (!hit) return false;
+  }
   if (req.flags) {
     for (const [k, v] of Object.entries(req.flags)) {
       // Boolean requirements test presence; anything else must match exactly,
@@ -139,6 +178,11 @@ export function meets(state, req) {
     if (req.composure.min != null && state.composure < req.composure.min) return false;
     if (req.composure.max != null && state.composure > req.composure.max) return false;
   }
+  if (req.exposure) {
+    if (req.exposure.min != null && state.exposure < req.exposure.min) return false;
+    if (req.exposure.max != null && state.exposure > req.exposure.max) return false;
+  }
+  if (req.act != null && state.act !== req.act) return false;
   if (req.counts) {
     for (const [k, r] of Object.entries(req.counts)) {
       const v = state.counts[k] || 0;
@@ -165,7 +209,17 @@ export function loadSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    return s && s.node && !s.ended ? s : null;
+    if (!s || !s.node || s.ended) return null;
+    // Fill in anything a save from an earlier version predates, so a resume
+    // never lands on a half-built state.
+    const base = newState();
+    for (const [k, v] of Object.entries(base)) {
+      if (s[k] === undefined) s[k] = v;
+    }
+    if (!s.window || typeof s.window.total !== 'number') {
+      s.window = { ...(WINDOWS['act' + s.act] || WINDOWS.act1) };
+    }
+    return s;
   } catch (e) { return null; }
 }
 

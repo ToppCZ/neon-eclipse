@@ -167,7 +167,8 @@ body.reduced #app::after { display: none; }
   flex-shrink: 0;
 }
 
-.top-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.top-row { display: flex; align-items: baseline; gap: 8px; }
+#clock-wrap { display: flex; align-items: baseline; gap: 7px; min-width: 0; flex: 1; }
 
 #clock {
   font-size: 22px;
@@ -179,13 +180,16 @@ body.reduced #app::after { display: none; }
 #clock-left {
   font-size: 11px;
   color: var(--text-faint);
-  margin-left: 8px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 #clock-wrap.urgent #clock { color: var(--pink); }
 #clock-wrap.urgent #clock-left { color: var(--pink); opacity: 0.8; }
 
-#signal-wrap { display: flex; align-items: center; gap: 6px; }
+#signal-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 #signal-label { font-size: 10px; letter-spacing: 0.2em; color: var(--text-faint); }
 #signal-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; }
 #signal-bars i {
@@ -222,10 +226,28 @@ body.reduced #app::after { display: none; }
 .meter-fill.comp.low { background: var(--pink); }
 .meter-fill.trust { background: linear-gradient(to right, #8a5fc0, var(--purple)); }
 .meter-fill.trust.low { background: var(--orange); }
+/* Exposure is the one meter you want empty, so it fills toward danger. */
+.meter-fill.exp { background: linear-gradient(to right, #6b5a3a, var(--gold)); }
+.meter-fill.exp.high { background: linear-gradient(to right, var(--orange), var(--pink)); }
+
+#exposure-meter { display: none; }
+#exposure-meter.shown { display: block; }
+
+#act-badge {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--purple);
+  border: 1px solid #3a2a5c;
+  border-radius: 4px;
+  padding: 2px 5px;
+  align-self: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
 #window-bar { margin: 7px 0 9px; }
 
-.top-meters { display: flex; gap: 14px; }
+.top-meters { display: flex; gap: 10px; }
 .meter { flex: 1; }
 .meter-name {
   display: block;
@@ -751,6 +773,13 @@ body.reduced .choice { animation: none; }
 .ending-desc { font-size: 12.5px; line-height: 1.55; color: var(--text-faint); }
 
 /* ================= Wider screens ================= */
+
+/* At the narrowest widths the act badge is the least load-bearing thing in
+   the header — the act is announced in the transcript anyway. */
+@media (max-width: 360px) {
+  #act-badge { display: none; }
+  .meter-name { font-size: 8.5px; letter-spacing: 0.12em; }
+}
 
 @media (min-width: 620px) {
   #transcript, .panel-scroll, #bottom {

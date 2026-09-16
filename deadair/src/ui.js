@@ -247,13 +247,15 @@ export class UI {
   // ---- Meters --------------------------------------------------------------
 
   syncMeters(state) {
-    $('clock').textContent = S.clockString(state.time);
-    $('clock-left').textContent = S.remainingString(state.time);
-    $('clock-wrap').classList.toggle('urgent', state.time <= 60);
+    const win = state.window || S.WINDOWS.act1;
+    $('clock').textContent = S.clockString(state.time, win);
+    $('clock-left').textContent = S.remainingString(state.time, win);
+    $('clock-wrap').classList.toggle('urgent', state.time <= win.total * 0.2);
+    $('act-badge').textContent = ['ACT I', 'ACT I', 'ACT II', 'ACT III'][state.act] || 'ACT I';
 
     const wf = $('window-fill');
-    wf.style.width = `${(state.time / S.WINDOW_START) * 100}%`;
-    wf.classList.toggle('low', state.time <= 75);
+    wf.style.width = `${(state.time / win.total) * 100}%`;
+    wf.classList.toggle('low', state.time <= win.total * 0.25);
 
     const cf = $('comp-fill');
     cf.style.width = `${state.composure}%`;
@@ -262,6 +264,13 @@ export class UI {
     const tf = $('trust-fill');
     tf.style.width = `${state.trust}%`;
     tf.classList.toggle('low', state.trust <= 30);
+
+    // Exposure stays hidden until the night makes it your problem.
+    const em = $('exposure-meter');
+    em.classList.toggle('shown', state.act >= 2 || state.exposure > 0);
+    const ef = $('exp-fill');
+    ef.style.width = `${state.exposure}%`;
+    ef.classList.toggle('high', state.exposure >= 60);
 
     const sw = $('signal-wrap');
     sw.className = `sig-${state.signal}`;
@@ -373,10 +382,12 @@ export class UI {
     const stats = $('end-stats');
     stats.innerHTML = '';
     const rows = [
-      ['Night remaining at close', state.time > 0 ? S.remainingString(state.time).replace(' to grid-up', '') : 'none'],
+      ['Time remaining at close', state.time > 0 ? S.remainingString(state.time, state.window).replace(/ (to grid-up|of daylight left)/, '') : 'none'],
+      ['Act reached', ['I', 'I', 'II', 'III'][state.act] || 'I'],
       ['Facts established', `${state.leads.length} of ${Object.keys(LEADS).length}`],
       ['Her trust in you', `${state.trust}`],
       ['Her composure', `${state.composure}`],
+      ['What Halo had on you', `${state.exposure}`],
       ['Outcomes logged', `${this.profile.seen.length} of ${Object.keys(ENDINGS).length}`],
     ];
     for (const [k, v] of rows) {

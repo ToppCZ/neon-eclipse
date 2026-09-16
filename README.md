@@ -3,7 +3,7 @@
 Two games in one universe, both vanilla HTML/CSS/JS with no dependencies, no build step, and no external art or audio assets:
 
 - **Neon Eclipse** — a bullet-heaven roguelike for desktop. Keyboard, canvas, 60fps. *(this README)*
-- **[Dead Air](deadair/)** — a one-night narrative adventure for phones. Portrait, one thumb, no canvas at all. *(see [deadair/README.md](deadair/README.md))*
+- **[Dead Air](deadair/)** — a three-act narrative adventure for phones. Portrait, one thumb, no canvas at all. *(see [deadair/README.md](deadair/README.md))*
 
 ---
 

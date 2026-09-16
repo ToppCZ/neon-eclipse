@@ -4,7 +4,13 @@ A story adventure for a phone, set in the Neon Eclipse universe sixteen years af
 
 You are **HALCYON**, a night-shift handler at relay K-7. You never leave the desk. Everything that happens tonight happens to somebody else, twelve blocks away in the dark, and reaches you as a voice on a channel.
 
-Wren takes a delivery job across the Blackout Belt. Halo Division is standing on the pickup before she gets there. You have five hours until grid-up, an archive nobody has opened since the handover, and no way to help her except by knowing things.
+Wren takes a delivery job across the Blackout Belt. Halo Division is standing on the pickup before she gets there. You have seven hours until grid-up, an archive nobody has opened since the handover, and no way to help her except by knowing things.
+
+The night is only the first act.
+
+- **Act I — The Night.** The courier run, the ambush, and what is actually on the drum. Only dying and running out of night end the story here; everything else becomes the board state for what follows.
+- **Act II — Daylight.** You are off shift, the relay is sealed, and you have one grey day to find the people who were blamed for the Eclipse. Out here *you* are the exposed one.
+- **Act III — The Second Night.** The sixteenth Eclipse memorial, the one hour a year the old grid frequencies go live, and every surviving person this happened to standing in one room.
 
 ## Play it
 
@@ -20,13 +26,14 @@ Then open `http://localhost:8080/deadair/` — **on a phone, or in a browser's d
 
 It's built around one constraint: **there is more to find out tonight than there is night to find it in.**
 
-- **The Window** — 300 minutes, 23:50 to 04:50. Every question you ask, route you pick, and tape you pull spends it. Nothing refunds it.
+- **The Window** — each act runs its own clock, and every question you ask, route you pick, tape you pull and door you knock on spends it. Nothing refunds it. There is always more worth doing than there is clock to do it in; that is the whole game.
 - **Leads** — discrete facts in a Casefile. They aren't flavour: they unlock dialogue and route options, and the endgame is gated on what you can actually *prove*. Locked choices show you what you would have needed, so you finish a run knowing what you missed. One lead you can acquire is false, planted by someone who wants a particular night to happen; there is exactly one way to catch it.
 - **Composure** and **Trust** — Wren's nerve, and her belief in you. Both are spendable and both are recoverable, but recovery costs minutes, which means every kind thing you do is taken directly out of the investigation. That trade is the game.
+- **Exposure** — from Act II on, a third meter: how much Halo has on *you*. Everything useful you do in daylight is done where people can see you doing it, and it accumulates. Buying it back costs the only thing you need more.
 - **Signal** — the Belt has no grid. In degraded stretches her messages arrive corrupted and options close. You hear it before you read it: the room tone is synthesized and gets grittier as the link does.
 - **Timed beats** — three or four moments where the choice list has a countdown on it, because sometimes a handler's real failure is taking half a second too long.
 
-Seven outcomes. You cannot see the whole map in one run; the Logged Outcomes screen tracks which ones you've reached.
+Eight outcomes. A run that reaches the end takes roughly 45 minutes to an hour; you cannot see the whole map in one, and the Logged Outcomes screen tracks which ones you've reached.
 
 ## Phone-first, specifically
 
@@ -35,7 +42,7 @@ Seven outcomes. You cannot see the whole map in one run; the Logged Outcomes scr
 - `env(safe-area-inset-*)` throughout, so notches and home indicators don't eat anything
 - Nothing depends on hover, right-click, or a keyboard
 - Tap the transcript to hurry a beat along
-- Autosaves at every decision; **Settings → Reduce effects** kills the scanlines, animation and text corruption
+- Autosaves at every decision, across act boundaries; **Settings → Reduce effects** kills the scanlines, animation and text corruption
 
 ## Structure
 
