@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05060f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Dead Air — a one-night narrative adventure. You are the voice in a courier's ear.">
+<title>Dead Air — Neon Eclipse</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2305060f'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%235ee6ff' stroke-width='2'/%3E%3Ccircle cx='20' cy='13' r='9' fill='%2305060f'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== Title ===== -->
+  <section id="screen-title" class="screen">
+    <div class="title-wrap">
+      <div class="title-kicker">NEON ECLIPSE</div>
+      <h1 class="title-main">DEAD<span class="title-gap">&nbsp;</span>AIR</h1>
+      <div class="title-rule"></div>
+      <p class="title-blurb">
+        Sixteen years of night. One courier in the Blackout Belt,
+        one handler on a dead relay, and five hours until the grid wakes up.<br><br>
+        You never leave the desk. All you have is what she tells you —
+        and what you can prove.
+      </p>
+      <div class="title-actions">
+        <button id="btn-continue" class="btn btn-primary hidden">Resume shift</button>
+        <button id="btn-new" class="btn btn-primary">Take the shift</button>
+        <button id="btn-endings" class="btn btn-ghost">Logged outcomes</button>
+        <button id="btn-settings" class="btn btn-ghost">Settings</button>
+      </div>
+      <div class="title-foot">Headphones recommended · Tap to advance</div>
+    </div>
+  </section>
+
+  <!-- ===== Main game ===== -->
+  <section id="screen-game" class="screen hidden">
+
+    <header id="topbar">
+      <div class="top-row">
+        <div id="clock-wrap">
+          <span id="clock">23:50</span>
+          <span id="clock-left">5h 00m to grid-up</span>
+        </div>
+        <div id="signal-wrap" title="Link quality">
+          <span id="signal-bars"><i></i><i></i><i></i></span>
+          <span id="signal-label">LINK</span>
+        </div>
+      </div>
+      <div id="window-bar" class="meter-track"><div id="window-fill" class="meter-fill window"></div></div>
+      <div class="top-meters">
+        <div class="meter">
+          <span class="meter-name">COMPOSURE</span>
+          <div class="meter-track"><div id="comp-fill" class="meter-fill comp"></div></div>
+        </div>
+        <div class="meter">
+          <span class="meter-name">TRUST</span>
+          <div class="meter-track"><div id="trust-fill" class="meter-fill trust"></div></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- COMMS -->
+    <main id="panel-comms" class="panel">
+      <div id="transcript" role="log" aria-live="polite" aria-label="Transcript"></div>
+      <div id="scroll-latest" class="hidden">↓ latest</div>
+    </main>
+
+    <!-- CASEFILE -->
+    <main id="panel-casefile" class="panel hidden">
+      <div class="panel-scroll">
+        <h2 class="panel-title">Casefile</h2>
+        <p class="panel-note">Facts you can actually stand behind. Some of what you are told tonight will not survive checking.</p>
+        <div id="lead-list"></div>
+      </div>
+    </main>
+
+    <!-- MAP -->
+    <main id="panel-map" class="panel hidden">
+      <div class="panel-scroll">
+        <h2 class="panel-title">Belt trace</h2>
+        <p class="panel-note">Last known positions, reconstructed from relay handshakes.</p>
+        <div id="map-list"></div>
+      </div>
+    </main>
+
+    <!-- Choices + tabs -->
+    <footer id="bottom">
+      <div id="timed-wrap" class="hidden">
+        <div id="timed-label">HOLDING THE LINE</div>
+        <div class="meter-track"><div id="timed-fill"></div></div>
+      </div>
+      <div id="choices"></div>
+      <nav id="tabs">
+        <button class="tab active" data-tab="comms"><span class="tab-ico">▤</span>Comms</button>
+        <button class="tab" data-tab="casefile"><span class="tab-ico">◈</span>Casefile<span id="lead-badge" class="badge hidden">0</span></button>
+        <button class="tab" data-tab="map"><span class="tab-ico">◉</span>Trace</button>
+        <button class="tab" data-tab="menu"><span class="tab-ico">≡</span>Menu</button>
+      </nav>
+    </footer>
+  </section>
+
+  <!-- ===== Ending ===== -->
+  <section id="screen-end" class="screen hidden">
+    <div class="end-wrap">
+      <div id="end-kicker">OUTCOME LOGGED</div>
+      <h2 id="end-title">—</h2>
+      <div class="title-rule"></div>
+      <div id="end-body"></div>
+      <div id="end-stats"></div>
+      <div class="title-actions">
+        <button id="btn-again" class="btn btn-primary">Run the night again</button>
+        <button id="btn-end-home" class="btn btn-ghost">Back to title</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Modal (menu / settings / endings list) ===== -->
+  <div id="modal" class="hidden">
+    <div id="modal-card">
+      <h3 id="modal-title">Menu</h3>
+      <div id="modal-body"></div>
+      <button id="modal-close" class="btn btn-ghost">Close</button>
+    </div>
+  </div>
+
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
