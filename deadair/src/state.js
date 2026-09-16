@@ -8,12 +8,12 @@ const PROFILE_KEY = 'deadair.profile.v1';
 // Each act runs its own clock. Act I is the night the job goes wrong; Act II is
 // the day you spend being hunted for it; Act III is the night you answer it.
 export const WINDOWS = {
-  act1: { total: 420, start: 22 * 60 + 30, label: 'to grid-up' },
-  act2: { total: 600, start: 6 * 60 + 10, label: 'of daylight' },
-  act3: { total: 420, start: 21 * 60 + 40, label: 'to grid-up' },
+  act1: { total: 530, start: 20 * 60, label: 'to grid-up' },
+  act2: { total: 660, start: 6 * 60 + 10, label: 'of daylight' },
+  act3: { total: 360, start: 22 * 60 + 40, label: 'to grid-up' },
   // Act II runs in two phases: the daylight you are hunted in, and the dusk
   // you get to prepare in. Same act, separate clocks.
-  dusk: { total: 480, start: 15 * 60, label: 'to the bell' },
+  dusk: { total: 350, start: 17 * 60 + 10, label: 'to the bell' },
 };
 
 export const WINDOW_START = WINDOWS.act1.total;
