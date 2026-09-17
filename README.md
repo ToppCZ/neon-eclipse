@@ -1,5 +1,14 @@
 # Neon Eclipse
 
+Two games in one universe, both vanilla HTML/CSS/JS with no dependencies, no build step, and no external art or audio assets:
+
+- **Neon Eclipse** — a bullet-heaven roguelike for desktop. Keyboard, canvas, 60fps. *(this README)*
+- **[Dead Air](deadair/)** — a three-act narrative adventure for phones. Portrait, one thumb, no canvas at all. *(see [deadair/README.md](deadair/README.md))*
+
+---
+
+## Neon Eclipse
+
 A bullet-heaven combat core wrapped in a strategic roguelike run structure — no external art or audio assets, everything (visuals, sound, music) is generated at runtime from vanilla HTML5 Canvas and WebAudio. Ships two ways: as a browser page, and as a standalone Windows desktop app.
 
 Pick a character and a build-defining relic, then navigate a branching map across 3 acts — combat, elite, shop, treasure, and rest nodes — choosing your path between fights. In combat, move to dodge and dash past danger while your weapons auto-fire; between fights, spend in-run Cores at shops, pick tiered rewards, and lean into elemental damage-type synergies against enemies with real resistances and weaknesses. Clear all 3 acts and their bosses to win the run.
@@ -72,6 +81,7 @@ src/
   utils.js         math, object pooling, spatial grid
 bundle.py        concatenates src/*.js into one script (no ES modules) for the desktop build
 desktop/         WPF + WebView2 wrapper -> NeonEclipse.exe (desktop/game/ is bundle.py's output)
+deadair/         the phone narrative game — self-contained, shares nothing but the setting
 ```
 
 ## Debugging
