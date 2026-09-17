@@ -8,7 +8,8 @@ Wren takes a delivery job across the Blackout Belt. Halo Division is standing on
 
 The night is only the first act.
 
-- **Act I — The Night.** 20:00 to grid-up at 04:50: the courier run, the ambush, and what is actually on the drum. Only dying and running out of night end the story here; everything else becomes the board state for what follows.
+- **Prologue — Shift Start.** 19:30. Six years of the same room: nine dead channels, a tape cabinet nobody has opened since the handover, and a bucket under switch four.
+- **Act I — The Night.** 19:30 to grid-up at 04:50: the courier run, the ambush, and what is actually on the drum. Only dying and running out of night end the story here; everything else becomes the board state for what follows.
 - **Act II — Daylight.** 06:10 to dusk: you are off shift, the relay is sealed, and you have one grey day to find the people who were blamed for the Eclipse. Out here *you* are the exposed one.
 - **Act III — The Second Night.** The sixteenth Eclipse memorial, the one hour a year the old grid frequencies go live, and every surviving person this happened to standing in one room.
 
@@ -35,7 +36,7 @@ It's built around one constraint: **there is more to find out tonight than there
 - **Signal** — the Belt has no grid. In degraded stretches her messages arrive corrupted and options close. You hear it before you read it: the room tone is synthesized and gets grittier as the link does.
 - **Timed beats** — three or four moments where the choice list has a countdown on it, because sometimes a handler's real failure is taking half a second too long.
 
-Eight outcomes. A run that reaches the end measures roughly 70 minutes, and closer to 90 at an unhurried reading pace. You cannot see the whole map in one — a typical finishing run establishes around 21 of 31 facts and takes 5 or 6 of the 9 lines of enquiry open to it at the desk — and the Logged Outcomes screen tracks which endings you've reached.
+Eight outcomes. A run that reaches the end measures roughly 80 minutes and up to 96, and comfortably over an hour and a half at an unhurried reading pace. You cannot see the whole map in one — a typical finishing run establishes around 22 of 31 facts and takes 5 or 6 of the 9 lines of enquiry open to it at the desk — and the Logged Outcomes screen tracks which endings you've reached.
 
 Each investigation chapter has a floor as well as a ceiling: you cannot leave the desk, or the day, having looked into almost nothing. What you can't do is look into everything.
 

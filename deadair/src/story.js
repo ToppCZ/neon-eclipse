@@ -186,8 +186,7 @@ node({
   chapter: 1,
   effects: { loc: 'relay', signal: 'clear' },
   lines: [
-    { who: 'sys', text: 'Relay K-7 · Night shift · Handle: HALCYON' },
-    { who: 'sys', text: 'Grid-up in 8h 50m' },
+    { who: 'sys', text: 'Channel 4 — courier band — OPEN' },
     { who: 'desc', text: 'The desk wakes up the way it always does: nine dead channels, one live one, and the sound of the sea coming through a wall that has not been fixed since before you were hired.' },
     { who: 'desc', text: 'The live channel is a courier. It is always a courier.' },
     { who: 'wren', text: 'Halcyon. You there?' },
@@ -229,31 +228,33 @@ node({
       text: "Who's the client?",
       sub: "Pull the ticket while she walks.",
       requires: { flags: { askedClient: false } },
-      effects: { time: -9, flags: { askedClient: true }, leads: ['L_MADDOX_NEW'] },
+      effects: { time: -9, count: { brief: 1 }, flags: { askedClient: true }, leads: ['L_MADDOX_NEW'] },
       goto: 'ch1_q_client',
     },
     {
       text: "What's in the case?",
       requires: { flags: { askedCase: false } },
-      effects: { time: -8, flags: { askedCase: true }, leads: ['L_MANIFEST_BLANK'] },
+      effects: { time: -8, count: { brief: 1 }, flags: { askedCase: true }, leads: ['L_MANIFEST_BLANK'] },
       goto: 'ch1_q_case',
     },
     {
       text: 'Why you? Why tonight?',
       requires: { flags: { askedWhy: false } },
-      effects: { time: -9, flags: { askedWhy: true }, trust: 3 },
+      effects: { time: -9, count: { brief: 1 }, flags: { askedWhy: true }, trust: 3 },
       goto: 'ch1_q_why',
     },
     {
       text: 'Before you move — are you alright?',
       sub: 'Costs night. Buys you a steadier courier.',
       requires: { flags: { askedOkay: false } },
-      effects: { time: -7, flags: { askedOkay: true }, composure: 12, trust: 5 },
+      effects: { time: -7, count: { brief: 1 }, flags: { askedOkay: true }, composure: 12, trust: 5 },
       goto: 'ch1_okay',
     },
     {
       text: 'Enough. Start moving.',
       sub: 'Spend nothing. Learn nothing.',
+      requires: { counts: { brief: { min: 2 } } },
+      lockedText: 'She has told you almost nothing about the job and you have asked her less. (Needs: 2 questions)',
       effects: { composure: 3 },
       goto: 'ch1_route',
     },
@@ -610,24 +611,24 @@ node({
       text: "It wasn't me. I'll prove it before dawn.",
       sub: 'Stake yourself on it.',
       effects: { trust: 5, flags: { promised: true } },
-      goto: 'ch2_open',
+      goto: 'ch1_offrow',
     },
     {
       text: "You're right to ask. Keep asking. Don't stop at me.",
       sub: 'Give her the suspicion and aim it.',
       effects: { trust: 9, composure: -3 },
-      goto: 'ch2_open',
+      goto: 'ch1_offrow',
     },
     {
       text: 'It was me, in the sense that this desk is on the list. I have no way to rule myself out yet.',
       sub: 'Total honesty. Expensive.',
       effects: { trust: 9, composure: -10, flags: { honestEarly: true } },
-      goto: 'ch2_open',
+      goto: 'ch1_offrow',
     },
     {
       text: "Walk the job. Suspicion doesn't pay nine thousand.",
       effects: { trust: -8, composure: 4 },
-      goto: 'ch2_open',
+      goto: 'ch1_offrow',
     },
   ],
 });
@@ -722,13 +723,13 @@ node({
     { who: 'wren', text: "He's sweeping. For the ticks." },
   ],
   effects: { signal: 'weak', composure: -8, leads: ['L_BEACON'] },
-  goto: 'ch2_cross',
+  goto: 'ch2_hail',
 });
 
 node({
   id: 'ch2_nest',
   chapter: 2,
-  effects: { signal: 'clear' },
+  effects: { signal: 'clear', flags: { metIlsa: true } },
   linesOnce: true,
   lines: [
     { who: 'desc', text: 'The old exchange came down in the third year and someone built a radio shack inside the collapse, using the wreck as an antenna. It should not work. It works extremely well.' },
@@ -2138,8 +2139,8 @@ node({
   effects: { openAct: 2, chapter: 5, loc: 'home', signal: 'clear' },
   lines: [
     { who: 'sys', text: 'ACT TWO — DAYLIGHT' },
-    { who: 'sys', text: 'Kestrel Bay · 06:10 · ten hours of usable light' },
-    { who: 'desc', text: 'Daylight in Kestrel Bay is not sunlight. It is a grey that comes up under the cloud deck and makes everything look like a photograph of itself. It lasts until about five, and then the city gives up.' },
+    { who: 'sys', text: 'Kestrel Bay · 06:10 · twelve hours of usable light' },
+    { who: 'desc', text: 'Daylight in Kestrel Bay is not sunlight. It is a grey that comes up under the cloud deck and makes everything look like a photograph of itself. It lasts until about half past six, and then the city gives up.' },
     { who: 'desc', text: 'You have never once worked in it. Handlers are nocturnal by contract.' },
     { who: 'desc', text: 'Somebody knocks on your door at 06:40, and in six years nobody has ever knocked on your door.' },
   ],
@@ -3059,7 +3060,7 @@ node({
   effects: { chapter: 7, loc: 'exchange' },
   lines: [
     { who: 'sys', text: 'Chapter Seven — The Chair of the Trust' },
-    { who: 'desc', text: 'At about five the light starts going, the way it does here, all at once and from the bottom up.' },
+    { who: 'desc', text: 'At about half past six the light starts going, the way it does here, all at once and from the bottom up.' },
     { who: 'desc', text: 'And a car pulls alongside you — not a Halo car, a good one — and a woman in the back winds the window down and says your call sign, correctly, with the stress on the right syllable, the way only somebody from the service ever gets it.' },
     { who: 'ferrant', text: 'Halcyon. Get in, it’s about to rain and I would like forty minutes of your time.' },
     { who: 'desc', text: 'Odile Ferrant is sixty-eight, and reads out the numbers of the dead once a year in a nice voice, and has a signature on a burn authorisation from sixteen years ago.' },
@@ -3108,24 +3109,26 @@ node({
     {
       text: 'Why.',
       requires: { flags: { askedWhyBurn: false } },
-      effects: { time: -12, flags: { askedWhyBurn: true }, leads: ['L_FERRANT_SIGNED'] },
+      effects: { time: -12, count: { car: 1 }, flags: { askedWhyBurn: true }, leads: ['L_FERRANT_SIGNED'] },
       goto: 'ch7_why',
     },
     {
       text: 'Operator Seven refused you twice.',
       requires: { flags: { askedSeven: false } },
-      effects: { time: -10, flags: { askedSeven: true }, composure: -4 },
+      effects: { time: -10, count: { car: 1 }, flags: { askedSeven: true }, composure: -4 },
       goto: 'ch7_seven',
     },
     {
       text: 'Who was the handler at K-7? I want his name.',
       sub: 'The one thing nobody has been able to give you.',
       requires: { flags: { askedHandler: false } },
-      effects: { time: -10, flags: { askedHandler: true }, leads: ['L_HALCYON_DESK'] },
+      effects: { time: -10, count: { car: 1 }, flags: { askedHandler: true }, leads: ['L_HALCYON_DESK'] },
       goto: 'ch7_handler',
     },
     {
       text: 'Say what you brought me here to say.',
+      requires: { counts: { car: { min: 2 } } },
+      lockedText: 'She is the only person alive who can answer any of this and you are cutting her off. (Needs: 2 questions)',
       effects: { time: -6 },
       goto: 'ch7_offer',
     },
@@ -3629,11 +3632,107 @@ node({
     { who: 'desc', text: 'She is very good at this. That is the thing you were not prepared for. She is genuinely, unshowily good at it.' },
     { who: 'ferrant', text: '"We do not have their names. The review board recorded them as numbers, and the families have asked that we honour the record as it stands."' },
     { who: 'desc', text: 'The families have asked. Somebody wrote that sentence, and it has been read out sixteen times, and it is a lie with a bow on it.' },
-    { who: 'ferrant', text: '"Operator One. Operator Two. Operator Three."' },
-    { who: 'desc', text: 'Four rows from the front, a woman in a good coat looks at her hands.' },
-    { who: 'ferrant', text: '"Operator Four. Operator Five. Operator Six. Operator Seven."' },
-    { who: 'desc', text: 'Somewhere at the back of the hall, a courier who has spent a year of night shifts looking for a voice hears her mother turned into a number for the sixteenth time.' },
+  ],
+  goto: 'ch10_numbers',
+});
+
+node({
+  id: 'ch10_numbers',
+  chapter: 10,
+  lines: [
+    { who: 'ferrant', text: '"Operator One."' },
+    { who: 'desc', text: 'Dead three years. Nobody in the room moves.' },
+    { who: 'ferrant', text: '"Operator Two."' },
+    { who: 'desc', text: 'Dead eleven.' },
+    { who: 'ferrant', text: '"Operator Three."' },
+    { who: 'desc', text: 'Four rows from the front, a woman in a good coat looks at her hands. Nobody around her knows why.' },
+    { who: 'ferrant', text: '"Operator Four."' },
+    { who: 'desc', text: 'At the back, if you went and got him, a man in a pressed jacket keeps his hands where he can see them.' },
+    { who: 'ferrant', text: '"Operator Five. Operator Six."' },
+    { who: 'desc', text: 'And then she stops.' },
+    { who: 'desc', text: 'A second and a half. Sixteen years running, in the same place, and the room has always thought it was for effect.' },
+  ],
+  goto: 'ch10_seven',
+});
+
+node({
+  id: 'ch10_seven',
+  chapter: 10,
+  lines: [
+    { who: 'ferrant', text: '"...Operator Seven."' },
+    { who: 'desc', text: 'Somewhere at the back of the hall, a courier who has spent a year of night shifts buying her way to a desk hears her mother turned into an integer for the sixteenth time.' },
+    { who: 'desc', text: 'You are close enough to hear her breathing on the link and far enough that you cannot reach her, which is the arrangement you have had for two days and which has never once been worse than it is now.' },
+    { who: 'wren', text: '...' },
+  ],
+  choices: [
+    {
+      text: 'Ilva Kestrel.',
+      sub: 'Say the name on the channel. Just to her. Just so it exists in the room.',
+      requires: { leads: ['L_OPERATOR_SEVEN'] },
+      lockedText: 'You never found out what Operator Seven was called. (Needs: Operator Seven)',
+      effects: { trust: 10, composure: 8, flags: { saidTheName: true } },
+      goto: 'ch10_seven_name',
+    },
+    {
+      text: "I'm here. Breathe. Forty seconds.",
+      sub: 'The handler answer.',
+      effects: { trust: 4, composure: 6 },
+      goto: 'ch10_seven_steady',
+    },
+    {
+      text: 'Say nothing. She did not ask you for anything.',
+      effects: { composure: -4, trust: 2 },
+      goto: 'ch10_seven_quiet',
+    },
+  ],
+});
+
+node({
+  id: 'ch10_seven_name',
+  chapter: 10,
+  lines: [
+    { who: 'you', text: 'Ilva Kestrel.' },
+    { who: 'desc', text: 'Nobody in the hall hears it. It goes down a courier band into one earpiece at the back of a room of two hundred people, while a woman at the front says a number out loud.' },
+    { who: 'wren', text: '...Say it again.' },
+    { who: 'you', text: 'Ilva Kestrel. Operator Seven. She refused it twice in the same words because she worked out that repeating it exactly was harder to minute as a discussion.' },
+    { who: 'desc', text: 'Two hundred people hear a number. One person hears a name and what the person it belonged to actually did.' },
+    { who: 'wren', text: "Sixteen years and nobody has said her name in this building." },
+    { who: 'wren', text: "Right. Right, okay. I'm ready. Whatever it is, I'm ready." },
+  ],
+  effects: { composure: 6 },
+  goto: 'ch10_rest',
+});
+
+node({
+  id: 'ch10_seven_steady',
+  chapter: 10,
+  lines: [
+    { who: 'you', text: "I'm here. Breathe. Forty seconds and then the bell." },
+    { who: 'wren', text: "Yeah." },
+    { who: 'wren', text: "Yeah. Handler voice. That's fine, I'll take the handler voice." },
+    { who: 'desc', text: 'It works, because it always works, and it is the correct thing to do, and you will wonder afterwards whether correct was what the moment wanted.' },
+  ],
+  goto: 'ch10_rest',
+});
+
+node({
+  id: 'ch10_seven_quiet',
+  chapter: 10,
+  lines: [
+    { who: 'desc', text: 'You say nothing, because she did not ask you for anything, and because six years have taught you that most of what people need on a channel is for it to stay open.' },
+    { who: 'desc', text: 'The link hisses very faintly. She does not speak either.' },
+    { who: 'desc', text: 'It is the right call maybe half the time. You will not find out which half this was.' },
+  ],
+  goto: 'ch10_rest',
+});
+
+node({
+  id: 'ch10_rest',
+  chapter: 10,
+  lines: [
     { who: 'ferrant', text: '"Operator Eight. Operator Nine."' },
+    { who: 'desc', text: 'Eight declined the settlement and has spent sixteen years as an archivist for an authority that does not exist. Nine emigrated and has never been found.' },
+    { who: 'desc', text: 'Odile Ferrant folds her hands. The technician by the tower stair puts down his newspaper and reaches for a switch that gets used once a year.' },
     { who: 'sys', text: '23:00 · old grid frequencies energised · bell · 60 seconds' },
   ],
   goto: 'ch10_beat',
@@ -3775,19 +3874,21 @@ node({
       text: 'Operator Three.',
       requires: { flags: { ammiCommitted: true, calledThree: false } },
       lockedText: 'There is no one else here who will answer to a number. (Needs: Sarran)',
-      effects: { flags: { calledThree: true } },
+      effects: { count: { floor: 1 }, flags: { calledThree: true } },
       goto: 'ch10_three',
     },
     {
       text: 'Operator Eight.',
       sub: 'The only one of the nine who never signed anything.',
       requires: { flags: { calledEight: false } },
-      effects: { flags: { calledEight: true } },
+      effects: { count: { floor: 1 }, flags: { calledEight: true } },
       goto: 'ch10_eight',
     },
     {
       text: 'Ask the room the question. All of it. Out loud.',
       sub: 'Whether this goes any further is not yours to decide.',
+      requires: { counts: { floor: { min: 1 } } },
+      lockedText: 'One voice has spoken and you are already asking the room to decide. (Needs: another of the Nine)',
       effects: { flags: { askedRoom: true } },
       goto: 'ch10_vale_moment',
     },
@@ -4823,7 +4924,7 @@ node({
     { who: 'sable', text: "...Right. Yes. They do that. They did it to a dispatcher I knew in the third year and she lost a whole day to it and never worked out why until about a decade later." },
     { who: 'sable', text: 'The why is that you only get one day, Halcyon, and they can spend it for you.' },
   ],
-  goto: 'ch6_hub',
+  goto: 'ch6_swap',
 });
 
 // ============================================================================
@@ -5008,14 +5109,14 @@ node({
       text: 'Get the names into somebody’s notebook while the room is still standing.',
       sub: 'A journalist with a shorthand pad is a transmitter of a slower kind.',
       requires: { flags: { didPress: false } },
-      effects: { flags: { didPress: true }, trust: 5 },
+      effects: { count: { after: 1 }, flags: { didPress: true }, trust: 5 },
       silent: true,
       goto: 'ch11_press',
     },
     {
       text: 'Ferrant. She sat down and let it happen and you want to know why.',
       requires: { flags: { didFerrantAfter: false } },
-      effects: { flags: { didFerrantAfter: true } },
+      effects: { count: { after: 1 }, flags: { didFerrantAfter: true } },
       silent: true,
       goto: 'ch11_ferrant_after',
     },
@@ -5023,12 +5124,14 @@ node({
       text: 'Sarran. Somebody should ask her how she is, given what she just spent.',
       requires: { flags: { ammiCommitted: true, didSarranAfter: false } },
       lockedText: 'She is not here, or never spoke. (Needs: Sarran)',
-      effects: { flags: { didSarranAfter: true }, trust: 4 },
+      effects: { count: { after: 1 }, flags: { didSarranAfter: true }, trust: 4 },
       silent: true,
       goto: 'ch11_sarran_after',
     },
     {
       text: 'Find Wren and get out before anybody official arrives.',
+      requires: { counts: { after: { min: 2 } } },
+      lockedText: 'Twenty minutes, a room that has not gone home, and you are leaving it to itself. (Needs: 2)',
       silent: true,
       goto: 'end_testimony',
     },
@@ -5918,4 +6021,436 @@ node({
   ],
   effects: { composure: -2 },
   goto: 'ch6_hub',
+});
+
+// ============================================================================
+// PROLOGUE — SHIFT START
+// Six years of this room before the night that matters. The bucket, the nine
+// dead channels and the nameplate all pay off later; they should be established
+// by somebody who has stopped noticing them.
+// ============================================================================
+
+node({
+  id: 'ch0_open',
+  chapter: 1,
+  effects: { loc: 'relay', signal: 'clear' },
+  lines: [
+    { who: 'sys', text: 'Relay K-7 · Night shift · Handle: HALCYON' },
+    { who: 'sys', text: '19:30 · grid-up in 9h 20m' },
+    { who: 'desc', text: 'Nine floors of dead switchgear and one working chair.' },
+    { who: 'desc', text: 'The relay service ran forty stations across Kestrel Bay before the Eclipse. It runs eleven now, and four of those are automated, and K-7 is kept because somebody has to handle the Belt and nobody else will take the shift.' },
+    { who: 'desc', text: 'You take the shift. You have taken it for six years.' },
+    { who: 'desc', text: 'The room: a board with nine channels on it, of which one has carried anything in living memory. A tape cabinet nobody has opened since the handover. A nameplate screwed into the desk with your call sign on it in a typeface that stopped being made before you were born.' },
+    { who: 'desc', text: 'And a bucket under switch four, with about two inches of water in it.' },
+  ],
+  goto: 'ch0_room',
+});
+
+node({
+  id: 'ch0_room',
+  chapter: 1,
+  linesOnce: true,
+  lines: [
+    { who: 'desc', text: 'Forty minutes before anything happens. There is always forty minutes before anything happens; it is most of the job.' },
+  ],
+  choices: [
+    {
+      text: 'Change the bucket.',
+      sub: 'It is Thursday.',
+      requires: { flags: { didBucket: false } },
+      effects: { time: -6, count: { shift: 1 }, flags: { didBucket: true } },
+      silent: true,
+      goto: 'ch0_bucket',
+    },
+    {
+      text: 'Run the channel checks.',
+      sub: 'Nine of them. Eight will be dead. They were dead yesterday.',
+      requires: { flags: { didChecks: false } },
+      effects: { time: -8, count: { shift: 1 }, flags: { didChecks: true } },
+      silent: true,
+      goto: 'ch0_checks',
+    },
+    {
+      text: 'Read the rota for the week.',
+      requires: { flags: { didRota: false } },
+      effects: { time: -7, count: { shift: 1 }, flags: { didRota: true } },
+      silent: true,
+      goto: 'ch0_rota',
+    },
+    {
+      text: 'Sit down and wait for the channel to do something.',
+      requires: { counts: { shift: { min: 2 } } },
+      lockedText: 'You have been in the chair four minutes and you are already waiting. (Needs: start the shift properly)',
+      silent: true,
+      goto: 'ch0_wait',
+    },
+  ],
+});
+
+node({
+  id: 'ch0_bucket',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'The bucket goes down the stair to the ninth-floor sluice, gets emptied, and comes back. Two inches. It is always about two inches.' },
+    { who: 'desc', text: 'You put it back under switch four without measuring, because six years ago you worked out exactly where it goes and you have not thought about it since.' },
+    { who: 'desc', text: 'There is a stain on the concrete around it, a wide pale ring, considerably older than six years.' },
+    { who: 'desc', text: 'You have never once wondered how long it has been leaking.' },
+  ],
+  goto: 'ch0_room',
+});
+
+node({
+  id: 'ch0_checks',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'Nine channels. You raise each one in order, the way the procedure card on the wall says to, and the procedure card is laminated and yellow and has a phone number on it for an authority that no longer exists.' },
+    { who: 'sys', text: 'CH 1 — carrier only · CH 2 — no carrier · CH 3 — no carrier' },
+    { who: 'sys', text: 'CH 4 — READY · CH 5 — no carrier · CH 6 — no carrier' },
+    { who: 'sys', text: 'CH 7 — no carrier · CH 8 — no carrier · CH 9 — no carrier' },
+    { who: 'desc', text: 'Channel one has a carrier and nothing else. It is the line the building came with; it has not rung in your six years and you have stopped expecting it to.' },
+    { who: 'desc', text: 'Channel four is the courier band. Channel four is the job.' },
+    { who: 'desc', text: 'The other seven have been dead since before the Eclipse, and you check them every night anyway, because the card says to and because a handler who stops checking is a handler who has started leaving.' },
+  ],
+  goto: 'ch0_room',
+});
+
+node({
+  id: 'ch0_rota',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'Dispatch pushes the week out at dusk. It is four lines long and it has been substantially the same four lines for six years.' },
+    { who: 'sys', text: 'K-7 · NIGHTS · HALCYON · Mon-Sat' },
+    { who: 'desc', text: 'Then, at the bottom, in the amendments field, which is normally empty:' },
+    { who: 'sys', text: 'AMENDED 19:10 — rota rebuilt — see dispatch' },
+    { who: 'desc', text: 'Sable has torn the week up and rebuilt it twenty minutes before your shift, which in six years she has not done once.' },
+  ],
+  choices: [
+    {
+      text: 'Raise dispatch and ask about it.',
+      effects: { time: -9, trust: 2, flags: { askedRota: true } },
+      goto: 'ch0_sable',
+    },
+    {
+      text: 'Leave it. Rotas change.',
+      sub: 'They do not, in fact, change.',
+      effects: { composure: 2 },
+      goto: 'ch0_room',
+    },
+  ],
+});
+
+node({
+  id: 'ch0_sable',
+  chapter: 1,
+  lines: [
+    { who: 'sable', text: 'Dispatch.' },
+    { who: 'you', text: 'You rebuilt the week at ten past seven.' },
+    { who: 'sable', text: 'I did.' },
+    { who: 'you', text: 'Why?' },
+    { who: 'desc', text: 'Typing. Sable types when she is deciding how much to say, and you have known that about her for six years and have never once found it useful until tonight.' },
+    { who: 'sable', text: 'Moved three handlers. Opened a desk. Nothing that affects you.' },
+    { who: 'you', text: 'It opened my desk, Sable.' },
+    { who: 'sable', text: "Your desk was already open, you're on it Monday to Saturday. Go and check your channels." },
+    { who: 'desc', text: 'The line closes. It is the first time in six years that a dispatcher has hung up on you, and you sit there for a moment in a room with nine channels and a bucket, being mildly insulted, having learned something you will not understand for another eleven hours.' },
+  ],
+  effects: { flags: { sableOdd: true } },
+  goto: 'ch0_room',
+});
+
+node({
+  id: 'ch0_wait',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'So you sit down, and the sea comes through a wall that has not been fixed since before you were hired, and above the cloud deck the dead satellites go round the way they have for sixteen years and will for another nine hundred.' },
+    { who: 'desc', text: 'People ask what a night handler does. The honest answer is: waits, correctly. Anybody can wait. Waiting correctly means being the same person at 04:00 that you were at 20:00, so that when somebody finally needs a voice there is one, and it is steady, and it has not spent the night going quietly strange in an empty building.' },
+    { who: 'desc', text: 'You are good at it. It is the only thing you have ever been unambiguously good at.' },
+    { who: 'desc', text: 'At 20:04, channel four opens.' },
+  ],
+  goto: 'ch1_open',
+});
+
+// ---- Act I: the Row, immediately after ---------------------------------------
+
+node({
+  id: 'ch1_offrow',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'The first ten minutes after something happens are the ones couriers get killed in, and they are the ten minutes a handler is actually for.' },
+    { who: 'wren', text: "I'm shaking. That's — is that normal? My hands won't do the thing." },
+    { who: 'you', text: 'Entirely normal and it will pass in about six minutes. Do not make any decisions during it.' },
+    { who: 'wren', text: "That's a very specific number." },
+    { who: 'you', text: 'It is in the training card. It is the single most useful sentence on the training card and nobody believes it until the first time.' },
+    { who: 'desc', text: 'She laughs, which is not really a laugh, and sits down on something metal in the dark for six minutes, and you stay on the channel and say nothing much.' },
+  ],
+  choices: [
+    {
+      text: 'Get the case description while it is fresh. Every detail.',
+      sub: 'Memory degrades fastest in the first hour.',
+      requires: { flags: { leftSealed: false } },
+      lockedText: 'She never opened it, so there is nothing to describe.',
+      effects: { time: -11, leads: ['L_CASE_PREGRID'], trust: 4 },
+      goto: 'ch1_offrow_case',
+    },
+    {
+      text: 'Get the men described instead. Kit, markings, how they moved.',
+      effects: { time: -13, leads: ['L_HALO_LEDGER'], composure: -3 },
+      goto: 'ch1_offrow_men',
+    },
+    {
+      text: 'Nothing. Let her have the six minutes.',
+      effects: { time: -6, composure: 10, trust: 5 },
+      goto: 'ch1_offrow_quiet',
+    },
+  ],
+});
+
+node({
+  id: 'ch1_offrow_case',
+  chapter: 1,
+  lines: [
+    { who: 'wren', text: 'Drum. Sealed, in a foam cradle. Index card taped to the cradle with one word on it, handwritten, and the ink has gone brown.' },
+    { who: 'you', text: 'Brown.' },
+    { who: 'wren', text: "Old-ink brown. My aunt's letters go that colour." },
+    { who: 'desc', text: 'Somebody wrote a word on a card sixteen years ago and taped it to a cradle and then, at some point, stopped being able to do anything else about it.' },
+    { who: 'wren', text: "There's a number under the word. Small. 03:25." },
+    { who: 'desc', text: 'You write that down without knowing why, on a shift log, in a building with nine dead channels.' },
+  ],
+  effects: { flags: { noted325: true } },
+  goto: 'ch2_open',
+});
+
+node({
+  id: 'ch1_offrow_men',
+  chapter: 1,
+  lines: [
+    { who: 'wren', text: 'Four. Coats, not armour. No district plate on the car, no unit flash, nothing stencilled.' },
+    { who: 'wren', text: "And they moved wrong. They moved like people who'd been told to find an object, not like people looking for a person. Nobody covered the exits. Nobody watched the stair." },
+    { who: 'you', text: 'Because a case cannot run.' },
+    { who: 'wren', text: "Because a case cannot run. They weren't expecting a courier at all." },
+    { who: 'desc', text: 'Which means the leak they worked from had an address and a time on it, and no name — and a job ticket has all three.' },
+    { who: 'wren', text: "So whoever told them, told them from the ticket. Not from watching me." },
+  ],
+  effects: { leads: ['L_ROUTE_LEAK'], flags: { objectNotPerson: true } },
+  goto: 'ch2_open',
+});
+
+node({
+  id: 'ch1_offrow_quiet',
+  chapter: 1,
+  lines: [
+    { who: 'desc', text: 'So you do nothing, for six minutes, on an open channel, in a dead building, while a woman sits on something metal in the dark and gets her hands back.' },
+    { who: 'desc', text: 'It is the hardest thing in the job and there is no card for it.' },
+    { who: 'wren', text: "...Okay." },
+    { who: 'wren', text: "Okay. Hands work." },
+    { who: 'you', text: 'Good.' },
+    { who: 'wren', text: "You didn't fill it." },
+    { who: 'you', text: 'No.' },
+    { who: 'wren', text: "Every handler I've ever had fills it. They talk at you the whole way through because the silence makes them feel useless." },
+    { who: 'wren', text: "Thank you for being useless quietly." },
+  ],
+  effects: { trust: 6 },
+  goto: 'ch2_open',
+});
+
+// ---- The swap ---------------------------------------------------------------
+// Act I was a handler in a safe room and a courier in danger. After the
+// interview, Halo has your movements and not hers, and the shape inverts.
+
+node({
+  id: 'ch6_swap',
+  chapter: 6,
+  effects: { flags: { swapped: true } },
+  lines: [
+    { who: 'wren', text: "They've got your whole morning." },
+    { who: 'you', text: 'They have my whole morning.' },
+    { who: 'wren', text: "Then you don't get an afternoon. Anywhere you go this afternoon, they know about within the hour, and so does whoever answers the door." },
+    { who: 'desc', text: 'She is right, and she has worked it out faster than you did, because this is her trade and not yours: a courier spends her whole working life thinking about who can see her.' },
+    { who: 'wren', text: 'So I go.' },
+    { who: 'you', text: 'Wren —' },
+    { who: 'wren', text: "No, listen. Four hundred and twelve jobs. Nobody in this city can look at me and see anything except a courier, because I am one, and I have been one on every street on this list." },
+    { who: 'wren', text: "You sit somewhere with no line of sight and you handle me. Which is, and I want to point this out, the actual job you are trained for and have been doing for six years, as opposed to walking up to front doors in the middle of the afternoon like a man delivering a summons." },
+    { who: 'desc', text: 'There is a silence on the line while you fail to find anything wrong with that.' },
+  ],
+  goto: 'ch6_swap_answer',
+});
+
+node({
+  id: 'ch6_swap_answer',
+  chapter: 6,
+  choices: [
+    {
+      text: 'Agree. Take the desk position and run her.',
+      sub: 'What you are for. Also what put her on a road last night.',
+      effects: { time: -20, exposure: -12, flags: { runningHer: true }, trust: 8 },
+      goto: 'ch6_swap_yes',
+    },
+    {
+      text: 'Say the thing out loud first: last time you did this, it went badly.',
+      sub: 'Name it before you repeat it.',
+      effects: { time: -14, trust: 12, composure: 6, flags: { runningHer: true, namedIt: true } },
+      goto: 'ch6_swap_named',
+    },
+    {
+      text: 'Refuse. You are not putting her out there again.',
+      sub: 'Costs the afternoon. Costs it in daylight, where they can see you.',
+      effects: { time: -10, exposure: 8, trust: -6 },
+      goto: 'ch6_swap_no',
+    },
+  ],
+});
+
+node({
+  id: 'ch6_swap_yes',
+  chapter: 6,
+  lines: [
+    { who: 'desc', text: 'You find a tram shelter on the Rill road with no line of sight to anything, and a courier walks into the afternoon, and you put a voice in her ear.' },
+    { who: 'you', text: 'Left at the chandler, then hold — there is a car at the junction that has not moved since I got here.' },
+    { who: 'wren', text: 'Holding.' },
+    { who: 'desc', text: 'And it is easy. That is the disconcerting part. Twenty minutes in it is completely routine, the way it was at 23:00 last night before anything happened, and your hands are steady and your voice is level and you are good at this.' },
+    { who: 'wren', text: "You've gone into the voice." },
+    { who: 'you', text: 'What voice?' },
+    { who: 'wren', text: "The flat one. The one from the Row. It's fine — it's better than fine, it's the reason I'm still walking. I just noticed you can turn it on." },
+  ],
+  goto: 'ch6_hub',
+});
+
+node({
+  id: 'ch6_swap_named',
+  chapter: 6,
+  lines: [
+    { who: 'you', text: 'Before you go. The last time I put a voice in your ear and told you where to walk, you spent the night on a terrace and a substation floor and a mast platform, and at one point I got it wrong and you paid for it.' },
+    { who: 'wren', text: 'I know.' },
+    { who: 'you', text: "I want it said out loud, because last night it was a job and neither of us chose it, and this afternoon I would be choosing it." },
+    { who: 'desc', text: 'The line is quiet for a moment.' },
+    { who: 'wren', text: "My mother refused an order twice and they went round her." },
+    { who: 'wren', text: "The reason that is the worst sentence in my life isn't that she refused. It's that nobody ever asked her again. They just routed round her and she never got to be part of it after that." },
+    { who: 'wren', text: "So ask me. Out loud, like you just did. And then let me say yes." },
+    { who: 'you', text: 'Will you walk the afternoon for me?' },
+    { who: 'wren', text: 'Yes.' },
+    { who: 'desc', text: 'It costs fourteen minutes of the only daylight there is, and it is the best fourteen minutes either of you spends all day.' },
+  ],
+  goto: 'ch6_hub',
+});
+
+node({
+  id: 'ch6_swap_no',
+  chapter: 6,
+  lines: [
+    { who: 'you', text: 'No. I put you on a road last night and I am not doing the afternoon version of it.' },
+    { who: 'wren', text: "That isn't a reason, that's a feeling." },
+    { who: 'you', text: 'It is a feeling I am going to act on.' },
+    { who: 'wren', text: "Right. So instead the man they photographed all morning is going to keep knocking on doors, and every door he knocks on goes in a folder, and I'm going to sit in a collapsed exchange being protected." },
+    { who: 'desc', text: 'She does not slam anything, because there is nothing to slam on a radio link, and the absence is worse.' },
+    { who: 'wren', text: "Fine. It's your afternoon." },
+    { who: 'desc', text: 'It is your afternoon, and it is now ten minutes shorter, and everyone you visit in it will be in a folder by evening.' },
+  ],
+  goto: 'ch6_hub',
+});
+
+// ---- Ilsa, unbidden ---------------------------------------------------------
+// She hosts an archivist and a courier in Act II. A player who took the fast
+// route across the Belt had never met her, which made that a stranger's sofa.
+// She has an antenna and the case has been ticking across her blocks all night;
+// of course she calls.
+
+node({
+  id: 'ch2_hail',
+  chapter: 2,
+  lines: [
+    { who: 'alert', text: 'Third-party carrier — somebody is pushing onto your link' },
+    { who: 'desc', text: 'You do not get third parties on a courier band. The band is point to point and sixteen years dead everywhere else, and in six years nobody has ever once come up on it uninvited.' },
+    { who: 'ilsa', text: "Relay handler. K-7, by the carrier tone. Don't bother denying it, I've been listening to that transmitter since before you were hired." },
+    { who: 'you', text: 'Who is this?' },
+    { who: 'ilsa', text: "Somebody with a better antenna than you and considerably more free time. Your courier is carrying a box that has been pinging a maintenance band across my blocks for two hours." },
+    { who: 'wren', text: 'Halcyon, who —' },
+    { who: 'ilsa', text: "Ilsa. I live in the old exchange. I am not a threat to either of you and I am about to be extremely useful, so listen." },
+  ],
+  goto: 'ch2_hail_two',
+});
+
+node({
+  id: 'ch2_hail_two',
+  chapter: 2,
+  lines: [
+    { who: 'ilsa', text: 'That band has not carried anything since the night the sky went out. I know, because I was on air for it, and I have had a receiver parked on it ever since like an idiot with a grudge.' },
+    { who: 'ilsa', text: "And at twenty past eleven tonight it started ticking. Two, pause, two." },
+    { who: 'you', text: 'It is a beacon.' },
+    { who: 'ilsa', text: "It is a beacon that somebody armed sixteen years ago and never came back for, and your courier has been walking it through a district of four thousand people who can all hear it." },
+    { who: 'desc', text: 'Which explains the seven people standing in a dark street, and the old woman who came out, and the thing that was said twice that neither of you caught.' },
+  ],
+  choices: [
+    {
+      text: 'Can you kill it?',
+      sub: 'She is offering. There is always a price.',
+      effects: { time: -22, flags: { beaconDead: true }, composure: 10, leads: ['L_BEACON'] },
+      goto: 'ch2_hail_kill',
+    },
+    {
+      text: 'What do you want out of this?',
+      effects: { time: -8, leads: ['L_ILSA_ECLIPSE'] },
+      goto: 'ch2_hail_want',
+    },
+    {
+      text: 'Get off my channel.',
+      sub: 'She is an unknown on a line you cannot secure.',
+      effects: { time: -3, trust: -3, flags: { refusedIlsa: true } },
+      goto: 'ch2_hail_off',
+    },
+  ],
+});
+
+node({
+  id: 'ch2_hail_kill',
+  chapter: 2,
+  lines: [
+    { who: 'ilsa', text: 'I can talk her through it. Twenty minutes, and it is fiddly, and she will have to take the cradle apart with whatever she has in her pockets.' },
+    { who: 'wren', text: 'I have a multitool and no patience.' },
+    { who: 'ilsa', text: 'One of those is sufficient.' },
+    { who: 'desc', text: 'Twenty-two minutes of a scav radio operator reading a sixteen-year-old cradle layout to a courier from memory, in the dark, in the Blackout Belt, while a handler four districts away listens to both of them and contributes absolutely nothing of value.' },
+    { who: 'wren', text: "It's stopped." },
+    { who: 'ilsa', text: 'It has stopped. My board is quiet for the first time tonight and I find I do not like it as much as I expected.' },
+    { who: 'you', text: 'Ilsa. Thank you.' },
+    { who: 'ilsa', text: "Don't. I have wanted to know what was on the other end of that band for sixteen years and you have just told me it is a courier with a box. That is payment." },
+  ],
+  goto: 'ch2_hail_close',
+});
+
+node({
+  id: 'ch2_hail_want',
+  chapter: 2,
+  lines: [
+    { who: 'ilsa', text: 'I was on air the night it happened. I had a board like this one and I heard the whole thing go.' },
+    { who: 'ilsa', text: "Everybody tells you it was an accident in the array. It was an order. It came down a relay line — a courier relay, not a corporate one. Deniable and cheap." },
+    { who: 'ilsa', text: 'I heard the acknowledgement. A handler’s voice, using a handler’s call sign, confirming a burn like it was a parcel.' },
+    { who: 'ilsa', text: "So what do I want? I want to know which station. I have wanted it for sixteen years and I have never once had a relay handler on my board to ask." },
+    { who: 'desc', text: 'The Belt is very quiet. Somewhere behind her you can hear a board humming.' },
+  ],
+  goto: 'ch2_hail_two',
+});
+
+node({
+  id: 'ch2_hail_off',
+  chapter: 2,
+  lines: [
+    { who: 'you', text: 'Get off my channel.' },
+    { who: 'ilsa', text: "...Fair enough. It is your channel." },
+    { who: 'desc', text: 'The carrier drops and the link is point to point again, the way it has been for six years, and you sit there having just refused the only person in this city who volunteered anything.' },
+    { who: 'wren', text: 'That was a mistake.' },
+    { who: 'you', text: 'Probably.' },
+    { who: 'wren', text: "Not probably. Belt people don't come up on a stranger's band for fun. She'll have been deciding whether to do it for an hour." },
+  ],
+  goto: 'ch2_hail_close',
+});
+
+node({
+  id: 'ch2_hail_close',
+  chapter: 2,
+  lines: [
+    { who: 'desc', text: 'The Belt goes back to being twelve blocks of nothing with four thousand people in it.' },
+    { who: 'wren', text: 'Halcyon. She said she was on air that night.' },
+    { who: 'you', text: 'She did.' },
+    { who: 'wren', text: "Everybody in this city was on air that night, and not one of them has ever been asked a single question about it." },
+  ],
+  effects: { flags: { metIlsa: true } },
+  goto: 'ch2_cross',
 });

@@ -55,7 +55,7 @@ export class Engine {
     this.ui.bindEngine(this);
     this.ui.redrawAll(this.state);
     this.ui.syncMeters(this.state);
-    this.enter(state.node || 'ch1_open', { replay: !!state.node });
+    this.enter(state.node || 'ch0_open', { replay: !!state.node });
   }
 
   // `replay` means we're resuming a save: re-entering the node the player was
